@@ -54,8 +54,9 @@ module emu
 
 	input  [11:0] HDMI_WIDTH,
 	input  [11:0] HDMI_HEIGHT,
+	output        HDMI_FREEZE,
 
-`ifdef USE_FB
+`ifdef MISTER_FB
 	// Use framebuffer in DDRAM (USE_FB=1 in qsf)
 	// FB_FORMAT:
 	//    [2:0] : 011=8bpp(palette) 100=16bpp 101=24bpp 110=32bpp
@@ -73,6 +74,7 @@ module emu
 	input         FB_LL,
 	output        FB_FORCE_BLANK,
 
+`ifdef MISTER_FB_PALETTE
 	// Palette control for 8bit modes.
 	// Ignored for other video modes.
 	output        FB_PAL_CLK,
@@ -80,6 +82,7 @@ module emu
 	output [23:0] FB_PAL_DOUT,
 	input  [23:0] FB_PAL_DIN,
 	output        FB_PAL_WR,
+`endif
 `endif
 
 	output        LED_USER,  // 1 - ON, 0 - OFF.
@@ -111,7 +114,6 @@ module emu
 	output        SD_CS,
 	input         SD_CD,
 
-`ifdef USE_DDRAM
 	//High latency DDR3 RAM interface
 	//Use for non-critical time purposes
 	output        DDRAM_CLK,
@@ -124,9 +126,7 @@ module emu
 	output [63:0] DDRAM_DIN,
 	output  [7:0] DDRAM_BE,
 	output        DDRAM_WE,
-`endif
 
-`ifdef USE_SDRAM
 	//SDRAM interface with lower latency
 	output        SDRAM_CLK,
 	output        SDRAM_CKE,
@@ -139,10 +139,10 @@ module emu
 	output        SDRAM_nCAS,
 	output        SDRAM_nRAS,
 	output        SDRAM_nWE,
-`endif
 
-`ifdef DUAL_SDRAM
+`ifdef MISTER_DUAL_SDRAM
 	//Secondary SDRAM
+	//Set all output SDRAM_* signals to Z ASAP if SDRAM2_EN is 0
 	input         SDRAM2_EN,
 	output        SDRAM2_CLK,
 	output [12:0] SDRAM2_A,
@@ -174,6 +174,7 @@ module emu
 	input         OSD_STATUS
 );
 
+//`define DEBUG_BUILD
 
 assign ADC_BUS  = 'Z;
 assign {UART_RTS, UART_TXD, UART_DTR} = 0;
@@ -195,6 +196,7 @@ assign LED_DISK  = 0;
 assign LED_POWER = 0;
 assign BUTTONS   = osd_btn;
 assign VGA_SCALER= 0;
+assign HDMI_FREEZE = 0;
 
 assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
@@ -385,6 +387,7 @@ wire  [7:0] ioctl_index;
 
 wire [11:0] joy0_USB,joy1_USB,joy2_USB,joy3_USB,joy4_USB;
 wire [24:0] ps2_mouse;
+wire [10:0] ps2_key;
 
 wire  [7:0] joy0_x,joy0_y,joy1_x,joy1_y;
 
@@ -450,11 +453,10 @@ joy_db15 joy_db15
 );
 
 
-hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
+hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 (
 	.clk_sys(clk_sys),
 	.HPS_BUS(HPS_BUS),
-	.conf_str(CONF_STR),
 
 	.buttons(buttons),
 	.forced_scandoubler(forced_scandoubler),
@@ -469,7 +471,8 @@ hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 	.joystick_4(joy4_USB),
 	.joy_raw(OSD_STATUS? (joydb_1[5:0]|joydb_2[5:0]) : 6'b000000 ), //Menu Dirs, A:Action B:Back (OSD)
 	.ps2_mouse(ps2_mouse),
-
+	.ps2_key(ps2_key),
+	
 	.status(status),
 	.status_menumask(status_menumask),
 	.status_in({status[63:5],1'b0,status[3:0]}),
@@ -481,13 +484,13 @@ hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1)) hps_io
 	.ioctl_download(ioctl_download),
 	.ioctl_index(ioctl_index),
 
-	.sd_lba(sd_lba),
+	.sd_lba('{sd_lba}),
 	.sd_rd(sd_rd),
 	.sd_wr(sd_wr),
 	.sd_ack(sd_ack),
 	.sd_buff_addr(sd_buff_addr),
 	.sd_buff_dout(sd_buff_dout),
-	.sd_buff_din(sd_buff_din),
+	.sd_buff_din('{sd_buff_din}),
 	.sd_buff_wr(sd_buff_wr),
 
 	.img_mounted(img_mounted),
@@ -594,8 +597,8 @@ always @(posedge clk_sys) begin
 	reg     has_bootrom = 0;
 	reg     last_rst = 0;
 
-	if (RESET) last_rst = 0;
-	if (status[0]) last_rst = 1;
+	if (RESET) last_rst <= 0;
+	if (status[0]) last_rst <= 1;
 
 	if (cart_download & ioctl_wr & status[0]) has_bootrom <= 1;
 
@@ -702,6 +705,14 @@ main main
 	
 	.TURBO(status[4] & turbo_allow),
 	.TURBO_ALLOW(turbo_allow),
+	
+`ifdef DEBUG_BUILD
+	.DBG_BG_EN(DBG_BG_EN),
+	.DBG_CPU_EN(DBG_CPU_EN),
+`else
+	.DBG_BG_EN(5'b11111),
+	.DBG_CPU_EN(1'b1),
+`endif
 
 	.AUDIO_L(AUDIO_L),
 	.AUDIO_R(AUDIO_R)
@@ -957,6 +968,7 @@ video_mixer #(.LINE_LENGTH(520), .GAMMA(1)) video_mixer
 (
 	.*,
 	.hq2x(scale==1),
+	.freeze_sync(),
 	.VGA_DE(vga_de),
 	.R((LG_TARGET && GUN_MODE && (!status[29] | LG_T)) ? {8{LG_TARGET[0]}} : R),
 	.G((LG_TARGET && GUN_MODE && (!status[29] | LG_T)) ? {8{LG_TARGET[1]}} : G),
@@ -1174,4 +1186,31 @@ always @(posedge clk_sys) begin
 	end
 end
  
+//debug
+`ifdef DEBUG_BUILD
+reg [4:0] DBG_BG_EN = '1;
+reg       DBG_CPU_EN = 1;
+
+wire       pressed = ps2_key[9];
+wire [8:0] code    = ps2_key[8:0];
+
+always @(posedge clk_sys) begin
+	reg old_state = 0;
+
+	old_state <= ps2_key[10];
+
+	if((ps2_key[10] != old_state) && pressed) begin
+		casex(code)
+			'h005: begin DBG_BG_EN[0] <= ~DBG_BG_EN[0]; end 	// F1
+			'h006: begin DBG_BG_EN[1] <= ~DBG_BG_EN[1] ; end 	// F2
+			'h004: begin DBG_BG_EN[2] <= ~DBG_BG_EN[2] ; end 	// F3
+			'h00C: begin DBG_BG_EN[3] <= ~DBG_BG_EN[3] ; end 	// F4
+			'h003: begin DBG_BG_EN[4] <= ~DBG_BG_EN[4] ; end 	// F5
+			'h177: begin DBG_CPU_EN <= ~DBG_CPU_EN; end 	// Pause
+		endcase
+	end
+end
+`endif
+
+
 endmodule
