@@ -403,7 +403,8 @@ begin
 	RAM_LOAD_EN  <= '1' when RAMST = RAMST_LOAD and RAM_ACCESS_CNT = 0 and RAM_BYTES = RAM_WORD and RAN = '1' else '0';
 	
 	ROM_NEED_WAIT <= '1' when (R14_CHANGE = '1' or MC.ROMWAIT = '1') and (ROMST = ROMST_LOAD or ROMST = ROMST_CACHE or (ROMST = ROMST_FETCH and ROM_ACCESS_CNT /= 0) or RON = '0') else '0';
-	RAM_NEED_WAIT <= '1' when (MC.RAMWAIT = '1' and (RAMST = RAMST_SAVE or RAMST = RAMST_PCF or RAN = '0')) or
+	RAM_NEED_WAIT <= '1' when (OP.OP = OP_STOP and (RAMST = RAMST_SAVE or RAMST = RAMST_PCF)) or 
+	                          (MC.RAMWAIT = '1' and (RAMST = RAMST_SAVE or RAMST = RAMST_PCF or RAN = '0')) or
 									  RAMST = RAMST_LOAD or RAMST = RAMST_CACHE or (RAMST = RAMST_FETCH and RAM_ACCESS_CNT /= 0) or RAMST = RAMST_RPIX else '0';
 	
 	process(CLK, RST_N)
@@ -533,13 +534,15 @@ begin
 		end if;
 	end process; 
 	
-	CACHE : entity work.dpram generic map(9, 8)
+	CACHE : entity work.dpram_difclk generic map(9, 8, 9, 8)
 	port map(
-		clock			=> not CLK,
+		clock0		=> not CLK,
 		address_a	=> BRAM_CACHE_ADDR_A,
 		data_a		=> BRAM_CACHE_DI_A,
 		wren_a		=> BRAM_CACHE_WE_A,
 		q_a			=> BRAM_CACHE_Q_A,
+		
+		clock1		=> CLK,
 		address_b	=> BRAM_CACHE_ADDR_B,
 		data_b		=> BRAM_CACHE_DI_B,
 		wren_b		=> BRAM_CACHE_WE_B,
@@ -553,9 +556,7 @@ begin
 	
 	BRAM_CACHE_ADDR_B <= SNES_CACHE_ADDR;
 	BRAM_CACHE_DI_B <= DI;
-	BRAM_CACHE_WE_B <= '0' when ENABLE = '0' else 
-					  MMIO_CACHE_WR when EN = '0' else 
-					  '0';
+	BRAM_CACHE_WE_B <= MMIO_CACHE_WR when ENABLE = '1' and FLAG_GO = '0' else '0';
 	
 	
 	--Memory buses
