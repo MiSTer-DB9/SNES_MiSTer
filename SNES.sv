@@ -198,7 +198,6 @@ assign BUTTONS   = osd_btn;
 assign VGA_SCALER= 0;
 assign HDMI_FREEZE = 0;
 
-assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 
 wire [1:0] ar       = status[33:32];
@@ -294,7 +293,7 @@ always @(posedge CLK_50M) begin
 	end
 end
 
-wire reset = RESET | buttons[1] | status[0] | cart_download | spc_download | bk_loading | clearing_ram;
+wire reset = RESET | buttons[1] | status[0] | cart_download | spc_download | bk_loading | clearing_ram | msu_data_download;
 
 ////////////////////////////  HPS I/O  //////////////////////////////////
 
@@ -499,7 +498,8 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 	
 	.RTC(RTC),
 
-	.gamma_bus(gamma_bus)
+	.gamma_bus(gamma_bus),
+	.EXT_BUS(EXT_BUS)
 );
 
 wire       GUN_BTN = status[27];
@@ -514,7 +514,7 @@ wire [2:0] LHRom_type = status[3:1];
 wire code_index = &ioctl_index;
 wire code_download = ioctl_download & code_index;
 wire cart_download = ioctl_download & ioctl_index[5:0] == 0;
-wire spc_download = ioctl_download & ioctl_index[5:0] == 1;
+wire spc_download = ioctl_download & ioctl_index[5:0] == 6'h01;
 
 reg new_vmode;
 always @(posedge clk_sys) begin
@@ -616,6 +616,9 @@ end
 wire GSU_ACTIVE;
 wire turbo_allow;
 
+reg [15:0] MAIN_AUDIO_L;
+reg [15:0] MAIN_AUDIO_R;
+
 main main
 (
 	.RESET_N(RESET_N),
@@ -714,9 +717,32 @@ main main
 	.DBG_CPU_EN(1'b1),
 `endif
 
-	.AUDIO_L(AUDIO_L),
-	.AUDIO_R(AUDIO_R)
+	// MSU register handling
+	.MSU_TRACKOUT(msu_trackout),
+	.MSU_TRACKREQUEST(msu_trackrequest),
+	.MSU_TRACKMOUNTING(msu_trackmounting),
+	.MSU_TRACKMISSING(msu_trackmissing),
+	.MSU_VOLUME(msu_volume),
+	.MSU_REPEAT(msu_repeat),
+	.MSU_AUDIO_PLAYING_IN(msu_audio_play),
+	.MSU_AUDIO_PLAYING_OUT(msu_audio_playing_out),
+	.MSU_DATA_ADDR(msu_data_addr),
+	.MSU_DATA_IN(msu_data_in),
+	.MSU_DATA_ACK(msu_data_ack),
+	.MSU_DATA_SEEK(msu_data_seek),
+	.MSU_DATA_REQ(msu_data_req),
+	.MSU_ENABLE(msu_enable),
+
+	.AUDIO_L(MAIN_AUDIO_L),
+	.AUDIO_R(MAIN_AUDIO_R)
 );
+
+// Mix msu_audio into main mix
+wire signed [16:0] AUDIO_MIX_L = $signed({MAIN_AUDIO_L[15], MAIN_AUDIO_L}) + $signed({msu_audio_l[15], msu_audio_l});
+wire signed [16:0] AUDIO_MIX_R = $signed({MAIN_AUDIO_R[15], MAIN_AUDIO_R}) + $signed({msu_audio_r[15], msu_audio_r});
+
+assign AUDIO_L = msu_enable ? AUDIO_MIX_L[16:1] : MAIN_AUDIO_L;
+assign AUDIO_R = msu_enable ? AUDIO_MIX_R[16:1] : MAIN_AUDIO_R;
 
 reg RESET_N = 0;
 reg RFSH = 0;
@@ -920,7 +946,6 @@ always @(posedge clk_sys) begin
 		VBlank <= ~VBlank_out;
 	end
 end
-
 
 reg  [7:0] R,G,B;
 wire FIELD,INTERLACE;
@@ -1212,5 +1237,170 @@ always @(posedge clk_sys) begin
 end
 `endif
 
+///////////////////////////  MSU1  ///////////////////////////////////
+
+wire msu_enable;
+wire msu_audio_download = ioctl_download & ioctl_index[5:0] == 6'h02;
+wire msu_data_download  = ioctl_download & ioctl_index[5:0] == 6'h03;
+
+// EXT bus is used to communicate with the HPS for MSU functionality
+wire [35:0] EXT_BUS;
+hps_ext hps_ext
+(
+	.clk_sys(clk_sys),
+	.EXT_BUS(EXT_BUS),
+
+	.reset(reset),
+
+	.msu_enable(msu_enable),
+
+	.msu_trackmounting(msu_trackmounting),
+	.msu_trackmissing(msu_trackmissing),
+	.msu_trackout(msu_trackout),
+	.msu_trackrequest(msu_trackrequest),
+	.msu_audio_size(msu_audio_size),
+	
+	.msu_audio_ack(msu_audio_ack),
+	.msu_audio_req(msu_audio_req),
+	.msu_audio_jump_sector(msu_audio_jump_sector),
+	.msu_audio_sector(msu_audio_sector),
+	.msu_audio_download(msu_audio_download),
+	.msu_data_base(msu_data_base)
+);
+
+// Each sample is 4 bytes or two words. File IO is 1 word, collect 2 words
+reg        ext_audio_wr;
+reg [31:0] ext_audio_d;
+reg  [7:0] ext_audio_cnt;
+always @(posedge clk_sys) begin
+	reg wr;
+
+	wr <= 0;
+	ext_audio_wr <= wr;
+
+	if(reset || msu_audio_jump_sector || audio_fifo_reset) begin
+		ext_audio_cnt <= 0;
+	end
+	else if(msu_audio_download && ioctl_wr)  begin
+		if(ioctl_addr[1]) begin
+			wr <= 1;
+			ext_audio_d[31:16] <= ioctl_dout;
+			ext_audio_cnt <= ioctl_addr[9:2];
+		end
+		else begin
+			ext_audio_d[15:0] <= ioctl_dout;
+		end
+	end
+end
+
+// Msu1 audio register related
+wire        msu_trig_play;
+wire        msu_trig_pause;
+wire        msu_trackmounting;
+wire        msu_trackmissing;
+wire        msu_dataseekfinished_out;
+wire        msu_repeat;
+wire  [7:0] msu_volume;
+wire        msu_audio_playing_out;
+wire        msu_audio_play;
+wire [15:0] msu_trackout;
+wire        msu_trackrequest;
+wire [31:0] msu_audio_size;
+
+wire        msu_audio_ack;
+wire        msu_audio_req;
+wire        msu_audio_jump_sector;
+wire [21:0] msu_audio_sector;
+
+reg [15:0] samp_l;
+reg [15:0] samp_r;
+reg [10:0] audio_clk_div = 0;
+
+always @(posedge CLK_50M) begin
+	if(audio_clk_div) audio_clk_div <= audio_clk_div - 1'd1;
+	else begin
+		audio_clk_div <= 1133;
+		{samp_r,samp_l} <= audio_fifo_dout;
+	end
+end
+
+msu_fifo #(32,10) msu_audio_fifo
+(
+	.aclr(audio_fifo_reset),
+	.wrclk(clk_sys),
+	.wrreq(audio_fifo_wr),
+	.wrfull(audio_fifo_full),
+	.wrusedw(audio_fifo_usedw),
+	.data(ext_audio_d),
+	.rdclk(CLK_50M),
+	.rdreq(audio_fifo_rd),
+	.rdempty(audio_fifo_empty),
+	.q(audio_fifo_dout)
+);
+
+wire audio_clk_en = (audio_clk_div == 1);
+wire audio_fifo_reset = RESET | msu_trackmounting | msu_trackmissing | cart_download;
+wire audio_fifo_full;
+wire audio_fifo_wr = !audio_fifo_full && ext_audio_wr && msu_audio_fifo_write;
+wire [9:0] audio_fifo_usedw;
+wire audio_fifo_empty;
+wire audio_fifo_rd = !audio_fifo_empty && audio_clk_en && msu_audio_play;
+wire [31:0] audio_fifo_dout;
+wire msu_audio_fifo_write;
+
+// Audio volume
+reg [15:0] msu_audio_l;
+reg [15:0] msu_audio_r;
+wire signed [8:0] msu_vol_signed = {1'b0, msu_volume};
+wire signed [23:0] msu_vol_mix_l = $signed(samp_l) * msu_vol_signed;
+wire signed [23:0] msu_vol_mix_r = $signed(samp_r) * msu_vol_signed;
+assign msu_audio_l = (msu_audio_play) ? msu_vol_mix_l[23:8] : 16'h0000;
+assign msu_audio_r = (msu_audio_play) ? msu_vol_mix_r[23:8] : 16'h0000;
+
+msu_audio msu_audio
+(
+	.clk(clk_sys),
+	.reset(reset),
+
+	.track_size(msu_audio_size),
+
+	.ext_ack(msu_audio_ack),
+	.ext_wr(ext_audio_wr),
+	.ext_dout(ext_audio_d),
+	.ext_req(msu_audio_req),
+	.ext_count(ext_audio_cnt),
+	.ext_sector(msu_audio_sector),
+	// MSU1 audio wants to jump to a particular sector in the pcm file
+	.ext_jump_sector(msu_audio_jump_sector),
+	.audio_play(msu_audio_play),
+	.audio_fifo_usedw(audio_fifo_usedw),
+	.audio_fifo_full(audio_fifo_full),
+	.audio_fifo_write(msu_audio_fifo_write),
+	// MSU1 audio needs to know about file size of pcm file to make decisions on sectors
+
+	.trackmounting(msu_trackmounting | msu_trackrequest),
+	.play_in(msu_audio_playing_out),
+	.repeat_in(msu_repeat)
+);
+
+wire [31:0] msu_data_addr;
+wire  [7:0] msu_data_in;
+wire        msu_data_ack;
+wire        msu_data_seek;
+wire        msu_data_req;
+wire [31:0] msu_data_base;
+
+assign DDRAM_CLK = clk_mem;
+
+msu_data_store msu_data_store
+(
+	.*,
+	.rd_next(msu_data_req),
+	.rd_seek(msu_data_seek),
+	.rd_seek_done(msu_data_ack),
+	.rd_addr(msu_data_addr),
+	.rd_dout(msu_data_in),
+	.base_addr(msu_data_base)
+);
 
 endmodule
