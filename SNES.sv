@@ -51,13 +51,14 @@ module emu
 	output        VGA_F1,
 	output [1:0]  VGA_SL,
 	output        VGA_SCALER, // Force VGA scaler
+	output        VGA_DISABLE, // analog out is off
 
 	input  [11:0] HDMI_WIDTH,
 	input  [11:0] HDMI_HEIGHT,
 	output        HDMI_FREEZE,
 
 `ifdef MISTER_FB
-	// Use framebuffer in DDRAM (USE_FB=1 in qsf)
+	// Use framebuffer in DDRAM
 	// FB_FORMAT:
 	//    [2:0] : 011=8bpp(palette) 100=16bpp 101=24bpp 110=32bpp
 	//    [3]   : 0=16bits 565 1=16bits 1555
@@ -101,7 +102,7 @@ module emu
 	input         CLK_AUDIO, // 24.576 MHz
 	output [15:0] AUDIO_L,
 	output [15:0] AUDIO_R,
-	output        AUDIO_S, // 1 - signed audio samples, 0 - unsigned
+	output        AUDIO_S,   // 1 - signed audio samples, 0 - unsigned
 	output  [1:0] AUDIO_MIX, // 0 - no mix, 1 - 25%, 2 - 50%, 3 - 100% (mono)
 
 	//ADC
@@ -195,6 +196,7 @@ assign LED_DISK  = 0;
 assign LED_POWER = 0;
 assign BUTTONS   = osd_btn;
 assign VGA_SCALER= 0;
+assign VGA_DISABLE = 0;
 assign HDMI_FREEZE = 0;
 
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
@@ -300,67 +302,69 @@ wire reset = RESET | buttons[1] | status[0] | cart_download | spc_download | bk_
 // 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX   XXXXXXXXXXXX
+// XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX   XXXXXXXXXXXXXX
 
 `include "build_id.v"
 parameter CONF_STR = {
 	"SNES;UART31250,MIDI;",
-    "FS0,SFCSMCBINBS ;",
-	 "FS1,SPC;",
-    "-;",
-    "OEF,Video Region,Auto,NTSC,PAL;",
-    "O13,ROM Header,Auto,No Header,LoROM,HiROM,ExHiROM;",
-    "-;",
-    "C,Cheats;",
-    "H2OO,Cheats Enabled,Yes,No;",
-    "-;",
-    "D0RC,Load Backup RAM;",
-    "D0RD,Save Backup RAM;",
-    "D0ON,Autosave,Off,On;",
-    "D0-;",
-	 "P1,Audio & Video;",
-    "P1-;",
+	"FS0,SFCSMCBINBS ;",
+	"FS1,SPC;",
+	"-;",
+	"OEF,Video Region,Auto,NTSC,PAL;",
+	"O13,ROM Header,Auto,No Header,LoROM,HiROM,ExHiROM;",
+	"-;",
+	"C,Cheats;",
+	"H2OO,Cheats Enabled,Yes,No;",
+	"-;",
+	"D0RC,Load Backup RAM;",
+	"D0RD,Save Backup RAM;",
+	"D0ON,Autosave,Off,On;",
+	"D0-;",
+
+	"P1,Audio & Video;",
+	"P1-;",
 	"P1o01,Aspect Ratio,Original,Full Screen,[ARC1],[ARC2];",
-    "P1O9B,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
+	"P1O9B,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
 	"P1-;",
 	"d5P1o7,Vertical Crop,Disabled,216p(5x);",
 	"d5P1o36,Crop Offset,0,2,4,8,10,12,-12,-10,-8,-6,-4,-2;",
 	"P1o89,Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer;",
 	"P1oA,Force 256px,Off,On;",
 	"P1-;",
-    "P1OG,Pseudo Transparency,Blend,Off;",
-    "P1-;",
-    "P1OJK,Stereo Mix,None,25%,50%,100%;", 
+	"P1OG,Pseudo Transparency,Blend,Off;",
+	"P1-;",
+	"P1OJK,Stereo Mix,None,25%,50%,100%;", 
 
-	 "P2,Hardware;",
-    "P2-;",
-    "P2OH,Multitap,Disabled,Port2;",
-    "P2-;",
-		"D7P2oUV,UserIO Joystick,Off,DB9MD,DB15 ;",
-		"D7P2oT,UserIO Players, 1 Player,2 Players;",
-		"D7P2oS,Buttons Config.,Option 1,Option 2;",
-		"P2-;",
-    "D8P2O8,Serial,OFF,SNAC;",
-		"H6P2oR,SNAC Mode, 1 Player, 2 Players;", 
-    "P2-;",
-    "P2OPQ,Super Scope,Disabled,Joy1,Joy2,Mouse;",    
-    "D4P2OR,Super Scope Btn,Joy,Mouse;",
-    "D4P2OST,Cross,Small,Big,None;",
+	"P2,Input Options;",
+	"P2-;",
+	"P2O7,Swap Joysticks,No,Yes;",
+	"P2O8,SNAC,No,Yes;",
+	"P2-;",
+	"P2oB,Miracle Piano,No,Yes;",
+	"P2OH,Multitap,Disabled,Port2;",
+	"P2O56,Mouse,None,Port1,Port2;",
+	"P2-;",
+	"P2OPQ,Super Scope,Disabled,Joy1,Joy2,Mouse;",
+	"D4P2OR,Super Scope Btn,Joy,Mouse;",
+	"D4P2OST,Cross,Small,Big,None;",
 	"D4P2o2,Gun Type,Super Scope,Justifier;",
-    "P2-;",
-    "D1P2OI,SuperFX Speed,Normal,Turbo;",
-    "D3P2O4,CPU Speed,Normal,Turbo;",
-    "P2-;",
-    "P2OLM,Initial WRAM,9966(SNES2),00FF(SNES1),55(SD2SNES),FF;",
+	"P2-;",
+	"D7P2oUV,UserIO Joystick,Off,DB9MD,DB15 ;",
+	"D7P2oT,UserIO Players, 1 Player,2 Players;",
+	"D7P2oS,Buttons Config.,Option 1,Option 2;",
+		
+	"P3,Hardware;",
+	"P3-;",
+	"D1P3OI,SuperFX Speed,Normal,Turbo;",
+	"D3P3O4,CPU Speed,Normal,Turbo;",
+	"P3-;",
+	"P3OLM,Initial WRAM,9966(SNES2),00FF(SNES1),55(SD2SNES),FF;",
+	"P3oCD,Initial ARAM,9966(SNES2),00FF(SNES1),55(SD2SNES),FF;",
 
-    "-;",
-    "O56,Mouse,None,Port1,Port2;",
-	"oB,Miracle Piano,No,Yes;",
-    "O7,Swap Joysticks,No,Yes;",
-    "-;",
-    "R0,Reset;",
-    "J1,A(SS Fire),B(SS Cursor),X(SS TurboSw),Y(SS Pause),LT(SS Cursor),RT(SS Fire),Select,Start;",
-    "V,v",`BUILD_DATE
+	"-;",
+	"R0,Reset;",
+	"J1,A(SS Fire),B(SS Cursor),X(SS TurboSw),Y(SS Pause),LT(SS Cursor),RT(SS Fire),Select,Start;",
+	"V,v",`BUILD_DATE
 };
 
 wire  [1:0] buttons;
@@ -471,7 +475,7 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 	.joy_raw(OSD_STATUS? (joydb_1[5:0]|joydb_2[5:0]) : 6'b000000 ), //Menu Dirs, A:Action B:Back (OSD)
 	.ps2_mouse(ps2_mouse),
 	.ps2_key(ps2_key),
-	
+
 	.status(status),
 	.status_menumask(status_menumask),
 	.status_in({status[63:5],1'b0,status[3:0]}),
@@ -495,7 +499,7 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 	.img_mounted(img_mounted),
 	.img_readonly(img_readonly),
 	.img_size(img_size),
-	
+
 	.RTC(RTC),
 
 	.gamma_bus(gamma_bus),
@@ -520,12 +524,12 @@ reg new_vmode;
 always @(posedge clk_sys) begin
 	reg old_pal;
 	int to;
-	
+
 	if(~reset) begin
 		old_pal <= PAL;
 		if(old_pal != PAL) to <= 2000000;
 	end
-	
+
 	if(to) begin
 		to <= to - 1;
 		if(to == 1) new_vmode <= ~new_vmode;
@@ -701,7 +705,7 @@ main main
 	.GG_AVAILABLE(gg_available),
 	
 	.SPC_MODE(spc_mode),
-	
+
 	.IO_ADDR(ioctl_addr[16:0]),
 	.IO_DAT(ioctl_dout),
 	.IO_WR(spc_download & ioctl_wr),
@@ -808,6 +812,16 @@ always @* begin
     endcase
 end
 
+reg [7:0] aram_fill_data;
+always @* begin
+    case(status[45:44])
+        0: aram_fill_data = (mem_fill_addr[8] ^ mem_fill_addr[2]) ? 8'h66 : 8'h99;
+        1: aram_fill_data = (mem_fill_addr[9] ^ mem_fill_addr[0]) ? 8'hFF : 8'h00;
+        2: aram_fill_data = 8'h55;
+        3: aram_fill_data = 8'hFF;
+    endcase
+end
+
 wire[23:0] ROM_ADDR;
 wire       ROM_OE_N;
 wire       ROM_WE_N;
@@ -896,7 +910,7 @@ dpram_dif #(16,8,15,16) aram
 
 	// clear the RAM on loading
 	.address_b(spc_download ? addr_download[15:1] : mem_fill_addr[15:1]),
-	.data_b(spc_download ? ioctl_dout : 16'h0000),
+	.data_b(spc_download ? ioctl_dout : {2{aram_fill_data}}),
 	.wren_b(spc_download ? ioctl_wr : clearing_ram)
 );
 
@@ -1092,46 +1106,54 @@ lightgun lightgun
 	.PORT_DO(LG_DO)
 );
 
+// 1 [oooo|ooo) 7 - 1:+5V  2:Clk  3:Strobe   4:D0  5:D1  6: I/O  7:Gnd
+
 // Indexes:
-// 0 = D+    = Latch
-// 1 = D-    = CLK
-// 2 = TX-   = P5
-// 3 = GND_d
-// 4 = RX+   = P6
-// 5 = RX-   = P4
+// IDXDIR   Function    USBPIN
+// 0  OUT   Strobe      D+
+// 1  OUT   Clk (P1)    D-
+// 2  IN    D1          TX-
+// 3  OUT   CLK (P2)    GND_d
+// 4  BI    I/O         RX+
+// 5  IN    P1D0        RX-
+// 6  IN    P2D0        TX+
 
 wire raw_serial = status[8];
-wire raw_serial2 = status[59];
+reg snac_p2 = 0;
 wire raw_db9  = |JOY_FLAG[2:1];
 
 assign USER_OUT[2] = 1'b1;
-assign USER_OUT[3] = 1'b1;
 assign USER_OUT[5] = 1'b1;
 assign USER_OUT[7] = 1'b1;
+
+wire  [1:0] datajoy0_DI = snac_p2 ? {1'b1, USER_IN[3]} : JOY1_DO;
+wire  [1:0] datajoy1_DI = snac_p2 ? {USER_IN[2], USER_IN[3]} : JOY2_DO;
 
 // JOYX_DO[0] is P4, JOYX_DO[1] is P5
 wire [1:0] JOY1_DI;
 wire [1:0] JOY2_DI;
 wire JOY2_P6_DI;
 
+always @(posedge clk_sys) begin
+	if (raw_serial) begin
+		if (~USER_IN[3])
+			snac_p2 <= 1;
+	end else begin
+		snac_p2 <= 0;
+	end
+end
+
 always_comb begin
-	if (raw_serial & !raw_serial2) begin
-		USER_OUT[0] = JOY_STRB;
-		USER_OUT[1] = joy_swap ? ~JOY2_CLK : ~JOY1_CLK;
-		USER_OUT[6] = 1'b1;	
-		USER_OUT[4] = joy_swap ? JOY2_P6 : JOY1_P6;
-		JOY1_DI = joy_swap ? JOY1_DO : {USER_IN[2], USER_IN[5]};
-		JOY2_DI = joy_swap ? {USER_IN[2], USER_IN[5]} : JOY2_DO;
-		JOY2_P6_DI = joy_swap ? USER_IN[4] : (LG_P6_out | !GUN_MODE);
-	end else if (raw_serial & raw_serial2) begin
+	if (raw_serial) begin
 		USER_OUT[0] = JOY_STRB;
 		USER_OUT[1] = joy_swap ? ~JOY2_CLK : ~JOY1_CLK;
 		USER_OUT[6] = joy_swap ? ~JOY1_CLK : ~JOY2_CLK;
-		USER_OUT[4] = joy_swap ? JOY2_P6 : JOY1_P6;
-		JOY1_DI = joy_swap ? {1'b1      , USER_IN[3]} : {USER_IN[2], USER_IN[5]};
-		JOY2_DI = joy_swap ? {USER_IN[2], USER_IN[5]} : {1'b1      , USER_IN[3]};
-		JOY2_P6_DI = joy_swap ? USER_IN[4] : (LG_P6_out | !GUN_MODE);
-	end else if (JOY_FLAG[1]) begin
+		USER_OUT[4] = joy_swap ? JOY2_P6 : snac_p2 ? JOY2_P6 : JOY1_P6;
+		JOY1_DI = joy_swap ? datajoy0_DI : snac_p2 ? {1'b1, USER_IN[5]} : {USER_IN[2], USER_IN[5]};
+		JOY2_DI = joy_swap ? {USER_IN[2], USER_IN[5]} : datajoy1_DI;		
+		JOY2_P6_DI = joy_swap ? USER_IN[4] : snac_p2 ? USER_IN[4] : (LG_P6_out | !GUN_MODE);
+
+		end else if (JOY_FLAG[1]) begin
 		USER_OUT[0] = JOY_LOAD;
 		USER_OUT[1] = JOY_CLK;
 		USER_OUT[6] = 1'b1;
@@ -1175,7 +1197,7 @@ reg old_downloading = 0;
 always @(posedge clk_sys) begin
 	old_downloading <= cart_download;
 	if(~old_downloading & cart_download) bk_ena <= 0;
-	
+
 	//Save file always mounted in the end of downloading state.
 	if(cart_download && img_mounted && !img_readonly) bk_ena <= |ram_mask;
 end
@@ -1193,7 +1215,7 @@ always @(posedge clk_sys) begin
 	old_ack  <= sd_ack;
 
 	if(~old_ack & sd_ack) {sd_rd, sd_wr} <= 0;
-	
+
 	if(!bk_state) begin
 		if((~old_load & bk_load) | (~old_save & bk_save)) begin
 			bk_state <= 1;
@@ -1222,7 +1244,7 @@ always @(posedge clk_sys) begin
 		end
 	end
 end
- 
+
 //debug
 `ifdef DEBUG_BUILD
 reg [4:0] DBG_BG_EN = '1;
@@ -1238,12 +1260,12 @@ always @(posedge clk_sys) begin
 
 	if((ps2_key[10] != old_state) && pressed) begin
 		casex(code)
-			'h005: begin DBG_BG_EN[0] <= ~DBG_BG_EN[0]; end 	// F1
-			'h006: begin DBG_BG_EN[1] <= ~DBG_BG_EN[1] ; end 	// F2
-			'h004: begin DBG_BG_EN[2] <= ~DBG_BG_EN[2] ; end 	// F3
-			'h00C: begin DBG_BG_EN[3] <= ~DBG_BG_EN[3] ; end 	// F4
-			'h003: begin DBG_BG_EN[4] <= ~DBG_BG_EN[4] ; end 	// F5
-			'h177: begin DBG_CPU_EN <= ~DBG_CPU_EN; end 	// Pause
+			'h005: begin DBG_BG_EN[0] <= ~DBG_BG_EN[0]; end // F1
+			'h006: begin DBG_BG_EN[1] <= ~DBG_BG_EN[1]; end // F2
+			'h004: begin DBG_BG_EN[2] <= ~DBG_BG_EN[2]; end // F3
+			'h00C: begin DBG_BG_EN[3] <= ~DBG_BG_EN[3]; end // F4
+			'h003: begin DBG_BG_EN[4] <= ~DBG_BG_EN[4]; end // F5
+			'h177: begin DBG_CPU_EN   <= ~DBG_CPU_EN;   end // Pause
 		endcase
 	end
 end
@@ -1269,7 +1291,7 @@ hps_ext hps_ext
 	.msu_track_missing(msu_track_missing),
 	.msu_track_num(msu_track_num),
 	.msu_track_request(msu_track_request),
-	
+
 	.msu_audio_size(msu_audio_size),
 	.msu_audio_ack(msu_audio_ack),
 	.msu_audio_req(msu_audio_req),
@@ -1331,7 +1353,7 @@ reg [15:0] audio_l, audio_r;
 
 always @(posedge clk_sys) begin
 	reg [16:0] mix_l, mix_r;
-	
+
 	mix_l = $signed({main_audio_l[15], main_audio_l}) + $signed({msu_l[15], msu_l});
 	mix_r = $signed({main_audio_r[15], main_audio_r}) + $signed({msu_r[15], msu_r});
 
