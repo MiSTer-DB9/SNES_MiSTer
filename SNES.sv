@@ -338,7 +338,7 @@ parameter CONF_STR = {
 	"P2,Input Options;",
 	"P2-;",
 	"P2O7,Swap Joysticks,No,Yes;",
-	"P2O8,SNAC,No,Yes;",
+	"D7P2O8,SNAC,No,Yes;",
 	"P2-;",
 	"P2oB,Miracle Piano,No,Yes;",
 	"P2OH,Multitap,Disabled,Port2;",
@@ -349,9 +349,9 @@ parameter CONF_STR = {
 	"D4P2OST,Cross,Small,Big,None;",
 	"D4P2o2,Gun Type,Super Scope,Justifier;",
 	"P2-;",
-	"D7P2oUV,UserIO Joystick,Off,DB9MD,DB15 ;",
-	"D7P2oT,UserIO Players, 1 Player,2 Players;",
-	"D7P2oS,Buttons Config.,Option 1,Option 2;",
+	"D6P2oUV,UserIO Joystick,Off,DB9MD,DB15 ;",
+	"D6P2oT,UserIO Players, 1 Player,2 Players;",
+	"D6P2oS,Buttons Config.,Option 1,Option 2;",
 		
 	"P3,Hardware;",
 	"P3-;",
@@ -369,7 +369,7 @@ parameter CONF_STR = {
 
 wire  [1:0] buttons;
 wire [63:0] status;
-wire [15:0] status_menumask = {raw_db9, raw_serial, !raw_serial, en216p, !GUN_MODE, ~turbo_allow, ~gg_available, ~GSU_ACTIVE, ~bk_ena};
+wire [15:0] status_menumask = {raw_db9, raw_serial, en216p, !GUN_MODE, ~turbo_allow, ~gg_available, ~GSU_ACTIVE, ~bk_ena};
 wire        forced_scandoubler;
 reg  [31:0] sd_lba;
 reg         sd_rd = 0;
@@ -1127,7 +1127,7 @@ assign USER_OUT[5] = 1'b1;
 assign USER_OUT[7] = 1'b1;
 
 wire  [1:0] datajoy0_DI = snac_p2 ? {1'b1, USER_IN[3]} : JOY1_DO;
-wire  [1:0] datajoy1_DI = snac_p2 ? {USER_IN[2], USER_IN[3]} : JOY2_DO;
+wire  [1:0] datajoy1_DI = snac_p2 ? {USER_IN[2], USER_IN[5]} : JOY2_DO;
 
 // JOYX_DO[0] is P4, JOYX_DO[1] is P5
 wire [1:0] JOY1_DI;
@@ -1152,7 +1152,6 @@ always_comb begin
 		JOY1_DI = joy_swap ? datajoy0_DI : snac_p2 ? {1'b1, USER_IN[5]} : {USER_IN[2], USER_IN[5]};
 		JOY2_DI = joy_swap ? {USER_IN[2], USER_IN[5]} : datajoy1_DI;		
 		JOY2_P6_DI = joy_swap ? USER_IN[4] : snac_p2 ? USER_IN[4] : (LG_P6_out | !GUN_MODE);
-
 		end else if (JOY_FLAG[1]) begin
 		USER_OUT[0] = JOY_LOAD;
 		USER_OUT[1] = JOY_CLK;
