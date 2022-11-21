@@ -1123,11 +1123,12 @@ reg snac_p2 = 0;
 wire raw_db9  = |JOY_FLAG[2:1];
 
 assign USER_OUT[2] = 1'b1;
+assign USER_OUT[3] = 1'b1;
 assign USER_OUT[5] = 1'b1;
 assign USER_OUT[7] = 1'b1;
 
-wire  [1:0] datajoy0_DI = snac_p2 ? {1'b1, USER_IN[3]} : JOY1_DO;
-wire  [1:0] datajoy1_DI = snac_p2 ? {USER_IN[2], USER_IN[5]} : JOY2_DO;
+wire  [1:0] datajoy0_DI = snac_p2 ? {USER_IN[2], USER_IN[5]} : JOY1_DO;
+wire  [1:0] datajoy1_DI = snac_p2 ? {1'b1      , USER_IN[3]} : JOY2_DO;
 
 // JOYX_DO[0] is P4, JOYX_DO[1] is P5
 wire [1:0] JOY1_DI;
