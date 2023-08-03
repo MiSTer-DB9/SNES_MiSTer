@@ -302,7 +302,7 @@ wire reset = RESET | buttons[1] | status[0] | cart_download | spc_download | bk_
 // 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX   XXXXXXXXXXXXXX
+// XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX  XXXXXXXXXXXXXXX
 
 `include "build_id.v"
 parameter CONF_STR = {
@@ -356,6 +356,7 @@ parameter CONF_STR = {
 	"P3,Hardware;",
 	"P3-;",
 	"D1P3OI,SuperFX Speed,Normal,Turbo;",
+	"D1P3oE,SuperFX FastROM,Yes,No;",
 	"D3P3O4,CPU Speed,Normal,Turbo;",
 	"P3-;",
 	"P3OLM,Initial WRAM,9966(SNES2),00FF(SNES1),55(SD2SNES),FF;",
@@ -510,6 +511,7 @@ wire       GUN_BTN = status[27];
 wire [1:0] GUN_MODE = status[26:25];
 wire       GUN_TYPE = status[34];
 wire       GSU_TURBO = status[18];
+wire       GSU_FASTROM = ~status[46];
 wire       BLEND = ~status[16];
 wire [1:0] mouse_mode = status[6:5];
 wire       joy_swap = status[7] | piano;
@@ -632,6 +634,7 @@ main main
 
 	.GSU_ACTIVE(GSU_ACTIVE),
 	.GSU_TURBO(GSU_TURBO),
+	.GSU_FASTROM(GSU_FASTROM),
 
 	.ROM_TYPE(rom_type),
 	.ROM_MASK(rom_mask),
