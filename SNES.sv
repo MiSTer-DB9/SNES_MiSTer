@@ -57,6 +57,7 @@ module emu
 	input  [11:0] HDMI_HEIGHT,
 	output        HDMI_FREEZE,
 	output        HDMI_BLACKOUT,
+	output        HDMI_BOB_DEINT,
 
 `ifdef MISTER_FB
 	// Use framebuffer in DDRAM
@@ -198,6 +199,7 @@ assign VGA_SCALER= 0;
 assign VGA_DISABLE = 0;
 assign HDMI_FREEZE = 0;
 assign HDMI_BLACKOUT = 0;
+assign HDMI_BOB_DEINT = 0;
 
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 
@@ -358,7 +360,7 @@ parameter CONF_STR = {
 	"D1P3OI,SuperFX Speed,Normal,Turbo;",
 	"D1P3oE,SuperFX FastROM,Yes,No;",
 	"D3P3O4,CPU Speed,Normal,Turbo;",
-	"P3OV,Sufami Cart swaping,No,Yes;",
+	"P3OV,Sufami Cart swapping,No,Yes;",
 	"P3-;",
 	"P3OLM,Initial WRAM,9966(SNES2),00FF(SNES1),55(SD2SNES),FF;",
 	"P3oCD,Initial ARAM,9966(SNES2),00FF(SNES1),55(SD2SNES),FF;",
@@ -480,8 +482,8 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 
 	.status(status),
 	.status_menumask(status_menumask),
-	.status_in({status[63:5],1'b0,status[3:0]}),
-	.status_set(cart_download),
+	.status_in(cart_download ? {status[63:5],1'b0,status[3:0]} : {status[63:32],1'b0,status[30:0]}),
+	.status_set(cart_download | status0_fall),
 
 	.ioctl_addr(ioctl_addr),
 	.ioctl_dout(ioctl_dout),
@@ -600,10 +602,12 @@ always @(posedge clk_sys) begin
 end
 
 reg osd_btn = 0;
+reg status0_fall = 0;
 always @(posedge clk_sys) begin
 	integer timeout = 0;
 	reg     has_bootrom = 0;
 	reg     last_rst = 0;
+	reg     old_status0;
 
 	if (RESET) last_rst <= 0;
 	if (status[0]) last_rst <= 1;
@@ -617,6 +621,9 @@ always @(posedge clk_sys) begin
 			osd_btn <= ~has_bootrom;
 		end
 	end
+
+	old_status0 <= status[0];
+	status0_fall <= old_status0 & ~status[0];
 end
 
 ////////////////////////////  SYSTEM  ///////////////////////////////////
@@ -1235,7 +1242,7 @@ wire bk_load    = status[12];
 wire bk_save    = status[13] | (bk_pending & OSD_STATUS && status[23]);
 reg  bk_loading = 0;
 reg  bk_state   = 0;
-wire [31:0] sd_lba_end = (rom_type & 8'hF8) == 8'h28 ? {ram_mask[23:9],1'b1} : ram_mask[23:9];
+wire [31:0] sd_lba_end = rom_type[7:4] == 4'h2 && rom_type[3] ? {ram_mask[23:9],1'b1} : ram_mask[23:9];//For Sufami with B cart, it's double size
 always @(posedge clk_sys) begin
 	reg old_load = 0, old_save = 0, old_ack;
 

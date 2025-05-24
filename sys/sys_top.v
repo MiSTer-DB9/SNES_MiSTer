@@ -680,6 +680,7 @@ wire         vbuf_write;
 wire  [23:0] hdmi_data;
 wire         hdmi_vs, hdmi_hs, hdmi_de, hdmi_vbl, hdmi_brd;
 wire         freeze;
+wire         bob_deint;
 
 `ifndef MISTER_DEBUG_NOHDMI
 	wire clk_hdmi  = hdmi_clk_out;
@@ -714,6 +715,7 @@ wire         freeze;
 		.reset_na (~reset_req),
 		.run      (1),
 		.freeze   (freeze),
+		.bob_deint  (bob_deint),
 
 		.i_clk    (clk_ihdmi),
 		.i_ce     (ce_hpix),
@@ -1743,6 +1745,7 @@ emu emu
 	.HDMI_HEIGHT(direct_video ? 12'd0 : hdmi_height),
 	.HDMI_FREEZE(freeze),
 	.HDMI_BLACKOUT(hdmi_blackout),
+	.HDMI_BOB_DEINT(bob_deint),
 
 	.CLK_VIDEO(clk_vid),
 	.CE_PIXEL(ce_pix),
