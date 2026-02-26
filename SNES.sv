@@ -498,7 +498,7 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 	.joystick_3(joy3_USB),
 	.joystick_4(joy4_USB),
 	.joystick_0_rumble(joystick1_rumble),
-	.joy_raw(OSD_STATUS? (joydb_1[11:0] | joydb_2[11:0]) : 12'b0),
+	.joy_raw(OSD_STATUS? ({USER_MODE, joydb_1[11:0] | joydb_2[11:0]}) : 14'b0),
 	.ps2_mouse(ps2_mouse),
 	.ps2_key(ps2_key),
 
