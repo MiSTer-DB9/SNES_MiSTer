@@ -169,24 +169,28 @@ module emu
 	// 1 - D-/TX
 	// 2..6 - USR2..USR6
 	// Set USER_OUT to 1 to read from USER_IN.
-	output  	USER_OSD,	
-	output  [1:0]	USER_MODE,
-	input   [7:0]	USER_IN,
-	output  [7:0]	USER_OUT,
+	// [MiSTer-DB9 BEGIN] - DB9/SNAC8 support
+	output        USER_OSD,
+	output  [1:0] USER_MODE,
+	input   [7:0] USER_IN,
+	output  [7:0] USER_OUT,
+	// [MiSTer-DB9 END]
 
 	input         OSD_STATUS
 );
 
 assign ADC_BUS  = 'Z;
 
+// [MiSTer-DB9 BEGIN] - DB9/SNAC8 support
 wire         CLK_JOY = CLK_50M;         //Assign clock between 40-50Mhz
-wire   [2:0] JOY_FLAG  = {status[62],status[63],status[61]}; //Assign 3 bits of status (31:29) o (63:61)
+wire   [2:0] JOY_FLAG  = {status[126],status[127],status[125]};
 wire         JOY_CLK, JOY_LOAD, JOY_SPLIT, JOY_MDSEL;
 wire   [5:0] JOY_MDIN  = JOY_FLAG[2] ? {USER_IN[6],USER_IN[3],USER_IN[5],USER_IN[7],USER_IN[1],USER_IN[2]} : '1;
 wire         JOY_DATA  = JOY_FLAG[1] ? USER_IN[5] : '1;
 //assign       USER_OUT  = JOY_FLAG[2] ? {3'b111,JOY_SPLIT,3'b111,JOY_MDSEL} : JOY_FLAG[1] ? {6'b111111,JOY_CLK,JOY_LOAD} : '1;
 assign       USER_MODE = JOY_FLAG[2:1] ;
 assign       USER_OSD  = joydb_1[10] & joydb_1[6];
+// [MiSTer-DB9 END]
 
 assign AUDIO_S   = 1;
 assign AUDIO_MIX = status[20:19];
@@ -356,11 +360,14 @@ parameter CONF_STR = {
 	"D4P2OR,Super Scope Btn,Joy,Mouse;",
 	"D4P2OST,Cross,Small,Big,None;",
 	"D4P2o2,Gun Type,Super Scope,Justifier;",
+	
+// [MiSTer-DB9 BEGIN] - DB9/SNAC8 support
 	"P2-;",
-	"P2oUV,UserIO Joystick,Off,DB9MD,DB15 ;",
-	"P2oT,UserIO Players, 1 Player,2 Players;",
-	"P2oS,Buttons Config.,Option 1,Option 2;",
-		
+	"P2O[127:126],UserIO Joystick,Off,DB9MD,DB15;",
+	"P2O[125],UserIO Players, 1 Player,2 Players;",
+	"P2O[124:123],Buttons Config.,Option 1,Option 2,Option 3;",
+// [MiSTer-DB9 END]
+
 	"P3,Hardware;",
 	"P3-;",
 	"D1P3OI,SuperFX Speed,Normal,Turbo;",
@@ -392,8 +399,10 @@ parameter CONF_STR = {
 };
 
 wire  [1:0] buttons;
-wire [63:0] status;
-wire [15:0] status_menumask = {raw_db9, raw_serial,ss_allow ,en216p, !GUN_MODE, ~turbo_allow, ~gg_available, ~GSU_ACTIVE, ~bk_ena};
+wire [127:0] status;
+// [MiSTer-DB9 BEGIN] - DB9/SNAC8 support
+wire [15:0] status_menumask = {raw_db9, raw_serial, ss_allow ,en216p, !GUN_MODE, ~turbo_allow, ~gg_available, ~GSU_ACTIVE, ~bk_ena};
+// [MiSTer-DB9 END]
 wire        forced_scandoubler;
 reg  [31:0] sd_lba;
 reg         sd_rd = 0;
@@ -412,7 +421,10 @@ wire [15:0] ioctl_dout;
 wire        ioctl_wr;
 wire  [7:0] ioctl_index;
 
+// [MiSTer-DB9 BEGIN] - DB9/SNAC8 support
 wire [12:0] joy0_USB,joy1_USB,joy2_USB,joy3_USB,joy4_USB;
+// [MiSTer-DB9 END]
+
 wire [24:0] ps2_mouse;
 wire [10:0] ps2_key;
 wire [15:0] joystick1_rumble;
@@ -423,32 +435,42 @@ wire [64:0] RTC;
 
 wire [21:0] gamma_bus;
 
-wire [31:0] joy0 = joydb_1ena ?
-	!status[60] ? {
+// [MiSTer-DB9 BEGIN] - DB9/SNAC8 support
+wire [12:0] joy0 = joydb_1ena ?
+	(OSD_STATUS ? 13'b0 :
+	(status[124:123] == 0 ?
 		// S M Z X A Y B C U D L R
-		OSD_STATUS? 32'b000000 : {joydb_1[10],joydb_1[11]|(joydb_1[10]&joydb_1[5]),joydb_1[9],joydb_1[7],joydb_1[4],joydb_1[8],joydb_1[5],joydb_1[6],joydb_1[3:0]}
-		} :
-		{
+		{joydb_1[11] & joydb_1[10], joydb_1[10], joydb_1[11]|(joydb_1[10]&joydb_1[5]), joydb_1[9], joydb_1[7], joydb_1[4], joydb_1[8], joydb_1[5], joydb_1[6], joydb_1[3:0]}
+		: status[124:123] == 1 ?
 		// S M C Z X Y A B U D L R
-		OSD_STATUS? 32'b000000 : {joydb_1[10],joydb_1[11]|(joydb_1[10]&joydb_1[5]),joydb_1[6],joydb_1[9],joydb_1[7],joydb_1[8],joydb_1[4],joydb_1[5],joydb_1[3:0]}
-	}
+		{joydb_1[11] & joydb_1[10], joydb_1[10], joydb_1[11]|(joydb_1[10]&joydb_1[5]), joydb_1[6], joydb_1[9], joydb_1[7], joydb_1[8], joydb_1[4], joydb_1[5], joydb_1[3:0]}
+		:
+		// NEO-GEO CD Mapping: A=>B, B=>A, C=>Y, D=>X, Select=>Select, Start=>Start
+		// SS S M L R X Y A B U D L R
+		{joydb_1[11] & joydb_1[10], joydb_1[10], joydb_1[11]|(joydb_1[10]&joydb_1[5]), 1'b0, 1'b0, joydb_1[6], joydb_1[7], joydb_1[4], joydb_1[5], joydb_1[3:0]}
+	))
 : joy0_USB;
 
-wire [31:0] joy1 = joydb_2ena ?
-	!status[60] ? {
+wire [12:0] joy1 = joydb_2ena ?
+	(OSD_STATUS ? 13'b0 :
+	(status[124:123] == 0 ?
 		// S M Z X A Y B C U D L R
-		OSD_STATUS? 32'b000000 : {joydb_2[10],joydb_2[11]|(joydb_2[10]&joydb_2[5]),joydb_2[9],joydb_2[7],joydb_2[4],joydb_2[8],joydb_2[5],joydb_2[6],joydb_2[3:0]}
-		} :
-		{
+		{joydb_2[10], joydb_2[11]|(joydb_2[10]&joydb_2[5]), joydb_2[9], joydb_2[7], joydb_2[4], joydb_2[8], joydb_2[5], joydb_2[6], joydb_2[3:0]}
+		: status[124:123] == 1 ?
 		// S M C Z X Y A B U D L R
-		OSD_STATUS? 32'b000000 : {joydb_2[10],joydb_2[11]|(joydb_2[10]&joydb_2[5]),joydb_2[6],joydb_2[9],joydb_2[7],joydb_2[8],joydb_2[4],joydb_2[5],joydb_2[3:0]}
-	}
+		{joydb_2[10], joydb_2[11]|(joydb_2[10]&joydb_2[5]), joydb_2[6], joydb_2[9], joydb_2[7], joydb_2[8], joydb_2[4], joydb_2[5], joydb_2[3:0]}
+		:
+		// NEO-GEO CD Mapping: A=>B, B=>A, C=>Y, D=>X, Select=>Select, Start=>Start
+		// S M L R X Y A B U D L R
+		{joydb_2[10], joydb_2[11]|(joydb_2[10]&joydb_2[5]), 1'b0, 1'b0, joydb_2[6], joydb_2[7], joydb_2[4], joydb_2[5], joydb_2[3:0]}
+	))
 : joydb_1ena ? joy0_USB : joy1_USB;
 
-wire [31:0] joy2 = joydb_2ena ? joy1_USB : joydb_1ena ? joy1_USB : joy2_USB;
-wire [31:0] joy3 = joydb_2ena ? joy2_USB : joydb_1ena ? joy2_USB : joy3_USB;
-wire [31:0] joy4 = joydb_2ena ? joy2_USB : joydb_1ena ? joy3_USB : joy4_USB;
+wire [12:0] joy2 = joydb_2ena ? joy1_USB : joydb_1ena ? joy1_USB : joy2_USB;
+wire [12:0] joy3 = joydb_2ena ? joy2_USB : joydb_1ena ? joy2_USB : joy3_USB;
+wire [12:0] joy4 = joydb_2ena ? joy2_USB : joydb_1ena ? joy3_USB : joy4_USB;
 
+// Unified joystick signals from DB controllers
 wire [15:0] joydb_1 = JOY_FLAG[2] ? JOYDB9MD_1 : JOY_FLAG[1] ? JOYDB15_1 : '0;
 wire [15:0] joydb_2 = JOY_FLAG[2] ? JOYDB9MD_2 : JOY_FLAG[1] ? JOYDB15_2 : '0;
 wire        joydb_1ena = |JOY_FLAG[2:1]              ;
@@ -464,7 +486,7 @@ joy_db9md joy_db9md
   .joy_mdsel ( JOY_MDSEL  ),
   .joy_in    ( JOY_MDIN   ),
   .joystick1 ( JOYDB9MD_1 ),
-  .joystick2 ( JOYDB9MD_2 )	  
+  .joystick2 ( JOYDB9MD_2 )
 );
 
 //----BA 9876543210
@@ -477,8 +499,9 @@ joy_db15 joy_db15
   .JOY_DATA  ( JOY_DATA  ),
   .JOY_LOAD  ( JOY_LOAD  ),
   .joystick1 ( JOYDB15_1 ),
-  .joystick2 ( JOYDB15_2 )	  
+  .joystick2 ( JOYDB15_2 )
 );
+// [MiSTer-DB9 END]
 
 
 hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
@@ -492,19 +515,23 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 
 	.joystick_l_analog_0({joy0_y, joy0_x}),
 	.joystick_l_analog_1({joy1_y, joy1_x}),
+	// [MiSTer-DB9 BEGIN] - DB9/SNAC8 support
 	.joystick_0(joy0_USB),
 	.joystick_1(joy1_USB),
 	.joystick_2(joy2_USB),
 	.joystick_3(joy3_USB),
 	.joystick_4(joy4_USB),
+	// [MiSTer-DB9 END]
 	.joystick_0_rumble(joystick1_rumble),
-	.joy_raw(OSD_STATUS? ({USER_MODE, joydb_1[11:0] | joydb_2[11:0]}) : 14'b0),
+	// [MiSTer-DB9 BEGIN] - DB9/SNAC8 support
+	.joy_raw(OSD_STATUS ? ({USER_MODE, joydb_1[11:0] | joydb_2[11:0]}) : 14'b0),
+	// [MiSTer-DB9 END]
 	.ps2_mouse(ps2_mouse),
 	.ps2_key(ps2_key),
 
 	.status(status),
 	.status_menumask(status_menumask),
-	.status_in(cart_download ? {status[63:53], ss_slot, status[50:5],1'b0,status[3:0]} : {status[63:53], ss_slot, status[50:32],1'b0,status[30:0]}),
+	.status_in(cart_download ? {status[127:53], ss_slot, status[50:5],1'b0,status[3:0]} : {status[127:53], ss_slot, status[50:32],1'b0,status[30:0]}),
 	.status_set(cart_download | status0_fall | ss_status),
 
 	.info_req(ss_info_req),
@@ -682,7 +709,7 @@ main main
 	.GSU_TURBO(GSU_TURBO),
 	.GSU_FASTROM(GSU_FASTROM),
 	.SUFAMI_SWAP(SUFAMI_SWAP),
-
+	
 	.SYSCLKR_CE(SNES_SYSCLKR_CE),
 	.SYSCLKF_CE(SNES_SYSCLKF_CE),
 	.REFRESH(SNES_REFRESH),
@@ -870,11 +897,11 @@ always @(posedge clk_sys) begin
 	if (clearing_ram) begin
 		mem_fill_wait <= ~mem_fill_wait;
 		if (mem_fill_wait) 
-		mem_fill_addr <= mem_fill_addr + 1'b1;
+			mem_fill_addr <= mem_fill_addr + 1'b1;
 	end else begin
 		mem_fill_addr <= 0;
 		mem_fill_wait <= 0;
-end
+	end
 end
 wire mem_fill_we = clearing_ram & ~mem_fill_wait;
 
@@ -1214,6 +1241,7 @@ lightgun lightgun
 
 wire raw_serial = status[8];
 reg snac_p2 = 0;
+// [MiSTer-DB9 BEGIN] - DB9/SNAC8 support
 wire raw_db9  = |JOY_FLAG[2:1];
 
 assign USER_OUT[2] = 1'b1;
@@ -1223,6 +1251,7 @@ assign USER_OUT[7] = 1'b1;
 
 wire  [1:0] datajoy0_DI = snac_p2 ? {USER_IN[2], USER_IN[5]} : JOY1_DO;
 wire  [1:0] datajoy1_DI = snac_p2 ? {1'b1      , USER_IN[3]} : JOY2_DO;
+// [MiSTer-DB9 END]
 
 // JOYX_DO[0] is P4, JOYX_DO[1] is P5
 wire [1:0] JOY1_DI;
@@ -1247,7 +1276,8 @@ always_comb begin
 		JOY1_DI = joy_swap ? datajoy0_DI : snac_p2 ? {1'b1, USER_IN[5]} : {USER_IN[2], USER_IN[5]};
 		JOY2_DI = joy_swap ? {USER_IN[2], USER_IN[5]} : datajoy1_DI;		
 		JOY2_P6_DI = joy_swap ? USER_IN[4] : snac_p2 ? USER_IN[4] : (LG_P6_out | !GUN_MODE);
-		end else if (JOY_FLAG[1]) begin
+// [MiSTer-DB9 BEGIN] - DB9/SNAC8 support
+	end else if (JOY_FLAG[1]) begin
 		USER_OUT[0] = JOY_LOAD;
 		USER_OUT[1] = JOY_CLK;
 		USER_OUT[6] = 1'b1;
@@ -1263,6 +1293,7 @@ always_comb begin
 		JOY1_DI = JOY1_DO;
 		JOY2_DI = JOY2_DO;
 		JOY2_P6_DI = (LG_P6_out | !GUN_MODE);
+// [MiSTer-DB9 END]
 	end else begin
 		USER_OUT[0] = 1'b1;
 		USER_OUT[1] = 1'b1;
