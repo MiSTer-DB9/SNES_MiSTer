@@ -478,14 +478,14 @@ wire [12:0] joy0 = joydb_1ena ?
 	(OSD_STATUS ? 13'b0 :
 	(status[124:123] == 0 ?
 		// S M Z X A Y B C U D L R
-		{joydb_1[11] & joydb_1[10], joydb_1[10], joydb_1[11]|(joydb_1[10]&joydb_1[5]), joydb_1[9], joydb_1[7], joydb_1[4], joydb_1[8], joydb_1[5], joydb_1[6], joydb_1[3:0]}
+		{joydb_1[11] & joydb_1[10], joydb_1[10], joydb_1[11], joydb_1[9], joydb_1[7], joydb_1[4], joydb_1[8], joydb_1[5], joydb_1[6], joydb_1[3:0]}
 		: status[124:123] == 1 ?
 		// S M C Z X Y A B U D L R
-		{joydb_1[11] & joydb_1[10], joydb_1[10], joydb_1[11]|(joydb_1[10]&joydb_1[5]), joydb_1[6], joydb_1[9], joydb_1[7], joydb_1[8], joydb_1[4], joydb_1[5], joydb_1[3:0]}
+		{joydb_1[11] & joydb_1[10], joydb_1[10], joydb_1[11], joydb_1[6], joydb_1[9], joydb_1[7], joydb_1[8], joydb_1[4], joydb_1[5], joydb_1[3:0]}
 		:
 		// NEO-GEO CD Mapping: A=>B, B=>A, C=>Y, D=>X, Select=>Select, Start=>Start
 		// SS S M L R X Y A B U D L R
-		{joydb_1[11] & joydb_1[10], joydb_1[10], joydb_1[11]|(joydb_1[10]&joydb_1[5]), 1'b0, 1'b0, joydb_1[6], joydb_1[7], joydb_1[4], joydb_1[5], joydb_1[3:0]}
+		{joydb_1[11] & joydb_1[10], joydb_1[10], joydb_1[11], 1'b0, 1'b0, joydb_1[6], joydb_1[7], joydb_1[4], joydb_1[5], joydb_1[3:0]}
 	))
 : joy0_USB;
 
@@ -493,14 +493,14 @@ wire [12:0] joy1 = joydb_2ena ?
 	(OSD_STATUS ? 13'b0 :
 	(status[124:123] == 0 ?
 		// S M Z X A Y B C U D L R
-		{joydb_2[10], joydb_2[11]|(joydb_2[10]&joydb_2[5]), joydb_2[9], joydb_2[7], joydb_2[4], joydb_2[8], joydb_2[5], joydb_2[6], joydb_2[3:0]}
+		{joydb_2[10], joydb_2[11], joydb_2[9], joydb_2[7], joydb_2[4], joydb_2[8], joydb_2[5], joydb_2[6], joydb_2[3:0]}
 		: status[124:123] == 1 ?
 		// S M C Z X Y A B U D L R
-		{joydb_2[10], joydb_2[11]|(joydb_2[10]&joydb_2[5]), joydb_2[6], joydb_2[9], joydb_2[7], joydb_2[8], joydb_2[4], joydb_2[5], joydb_2[3:0]}
+		{joydb_2[10], joydb_2[11], joydb_2[6], joydb_2[9], joydb_2[7], joydb_2[8], joydb_2[4], joydb_2[5], joydb_2[3:0]}
 		:
 		// NEO-GEO CD Mapping: A=>B, B=>A, C=>Y, D=>X, Select=>Select, Start=>Start
 		// S M L R X Y A B U D L R
-		{joydb_2[10], joydb_2[11]|(joydb_2[10]&joydb_2[5]), 1'b0, 1'b0, joydb_2[6], joydb_2[7], joydb_2[4], joydb_2[5], joydb_2[3:0]}
+		{joydb_2[10], joydb_2[11], 1'b0, 1'b0, joydb_2[6], joydb_2[7], joydb_2[4], joydb_2[5], joydb_2[3:0]}
 	))
 : joydb_1ena ? joy0_USB : joy1_USB;
 
