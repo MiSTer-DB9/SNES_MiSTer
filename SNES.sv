@@ -1263,7 +1263,9 @@ reg snac_p2 = 0;
 // [MiSTer-DB9 BEGIN] - DB9/SNAC8 support
 wire raw_db9  = |JOY_FLAG[2:1];
 
-assign USER_OUT[2] = 1'b1;
+// [MiSTer-DB9-Pro BEGIN] - route SPLIT (USER_OUT_DRIVE[2]) for Saturn 2P SNAC adapter mux
+assign USER_OUT[2] = joy_saturn_en ? USER_OUT_DRIVE[2] : 1'b1;
+// [MiSTer-DB9-Pro END]
 assign USER_OUT[3] = 1'b1;
 assign USER_OUT[5] = 1'b1;
 assign USER_OUT[7] = 1'b1;
