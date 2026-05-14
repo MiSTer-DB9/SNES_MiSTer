@@ -264,8 +264,8 @@ video_freak video_freak
 (
 	.*,
 	.VGA_DE_IN(vga_de),
-	.ARX((!ar) ? 12'd64 : (ar - 1'd1)),
-	.ARY((!ar) ? 12'd49 : 12'd0),
+	.ARX((!ar) ? (V224_MODE ? 12'd64 : 12'd2048) : (ar - 1'd1)),
+	.ARY((!ar) ? (V224_MODE ? 12'd49 : 12'd1673) : 12'd0),
 	.CROP_SIZE((en216p & vcrop_en) ? 10'd216 : 10'd0),
 	.CROP_OFF(voff),
 	.SCALE(status[41:40])
@@ -350,7 +350,7 @@ wire reset = RESET | buttons[1] | status[0] | cart_download | spc_download | bk_
 // 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX X XXXXXXXXXXXXXXXXX XXXX
+// XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXXX XXXXXXXX
 
 `include "build_id.v"
 parameter CONF_STR = {
@@ -415,7 +415,9 @@ parameter CONF_STR = {
 	"D1P3OI,SuperFX Speed,Normal,Turbo;",
 	"D1P3oE,SuperFX FastROM,Yes,No;",
 	"D3P3O4,CPU Speed,Normal,Turbo;",
+	"P3OU,Audio clock,Typical,Real;",
 	"P3OV,Sufami Cart swapping,No,Yes;",
+	"P3oMP,Competition Cart time,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18;",
 	"P3-;",
 	"P3OLM,Initial WRAM,9966(SNES2),00FF(SNES1),55(SD2SNES),FF;",
 	"P3oCD,Initial ARAM,9966(SNES2),00FF(SNES1),55(SD2SNES),FF;",
@@ -536,8 +538,7 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 	.joystick_3(joy3_USB),
 	.joystick_4(joy4_USB),
 	// [MiSTer-DB9 END]
-	.joystick_0_rumble(joystick1_rumble),
-	// [MiSTer-DB9 BEGIN] - DB9/SNAC8 support
+	.joystick_0_rumble(status[8] ? 16'h0000 : joystick1_rumble),
 	// [MiSTer-DB9 BEGIN] - DB9/SNAC8 support: joy_raw
 	.joy_raw(OSD_STATUS ? joy_raw_payload : 16'b0),
 	// [MiSTer-DB9 END]
@@ -587,6 +588,7 @@ wire       GUN_TYPE = status[34];
 wire       GSU_TURBO = status[18];
 wire       GSU_FASTROM = ~status[46];
 wire       SUFAMI_SWAP = status[31];
+wire [3:0] CC_TIME = status[57:54];
 wire       BLEND = ~status[16];
 wire [1:0] mouse_mode = status[6:5];
 wire       joy_swap = status[7] | piano;
@@ -728,6 +730,7 @@ main main
 	.GSU_TURBO(GSU_TURBO),
 	.GSU_FASTROM(GSU_FASTROM),
 	.SUFAMI_SWAP(SUFAMI_SWAP),
+	.CC_DIP({4'b0001,CC_TIME}),
 	
 	.SYSCLKR_CE(SNES_SYSCLKR_CE),
 	.SYSCLKF_CE(SNES_SYSCLKF_CE),
@@ -769,6 +772,7 @@ main main
 	.VRAM2_DI(VRAM2_Q),
 	.VRAM2_DO(VRAM2_D),
 	.VRAM2_WE_N(VRAM2_WE_N),
+	.VRAM_OE_N(VRAM_OE_N),
 
 	.ARAM_ADDR(ARAM_ADDR),
 	.ARAM_D(ARAM_D),
@@ -783,6 +787,7 @@ main main
 	.FIELD(FIELD),
 	.INTERLACE(INTERLACE),
 	.HIGH_RES(HIGH_RES),
+	.V224_MODE(V224_MODE),
 	.DOTCLK(DOTCLK_out),
 	
 	.HBLANKn(HBlank_out),
@@ -815,6 +820,8 @@ main main
 	.TURBO(status[4] & turbo_allow),
 	.TURBO_ALLOW(turbo_allow),
 	
+	.DSP_FREQ(status[30]),
+	
 `ifdef DEBUG
 	.DBG_BG_EN(DBG_BG_EN),
 	.DBG_CPU_EN(DBG_CPU_EN),
@@ -830,8 +837,11 @@ main main
 	.MSU_TRACK_MISSING(msu_track_missing),
 	.MSU_VOLUME(msu_volume),
 	.MSU_AUDIO_REPEAT(msu_audio_repeat),
+	.MSU_AUDIO_RESUME(msu_audio_resume),
 	.MSU_AUDIO_STOP(msu_audio_stop),
 	.MSU_AUDIO_PLAYING(msu_audio_playing),
+	.MSU_AUDIO_SECTOR(msu_audio_sector),
+	.MSU_RESUME_SECTOR(msu_resume_sector),
 	.MSU_DATA_ADDR(msu_data_addr),
 	.MSU_DATA(msu_data),
 	.MSU_DATA_ACK(msu_data_ack),
@@ -861,12 +871,12 @@ assign AUDIO_L = audio_l;
 assign AUDIO_R = audio_r;
 
 reg RESET_N = 0;
-reg RFSH = 0;
+reg RESET_REFRESH = 0;
 always @(posedge clk_sys) begin
 	reg [1:0] div;
 	
 	div <= div + 1'd1;
-	RFSH <= !div;
+	RESET_REFRESH <= !div;
 	
 	if (div == 2) RESET_N <= ~reset;
 end
@@ -963,6 +973,17 @@ wire[23:0] addr_download = ssbin_download ? ssbin_addr_download : cart_addr_down
 
 wire       sdram_download = cart_download | ssbin_download;
 
+reg [23:0] sdram_download_addr;
+reg [15:0] sdram_download_data;
+reg        sdram_download_wr;
+reg        sdram_download_en;
+always @(posedge clk_mem) begin
+	sdram_download_addr <= addr_download;
+	sdram_download_data <= ioctl_dout;
+	sdram_download_wr <= ioctl_wr;
+	sdram_download_en <= sdram_download;
+end
+
 reg READ_PULSE;
 always @(posedge clk_sys)
 	READ_PULSE <= SNES_SYSCLKR_CE;
@@ -985,55 +1006,64 @@ sdram sdram
 	.init(0), //~clock_locked),
 	.clk(clk_mem),
 	
-	.addr0(sdram_download ? addr_download : ROM_ADDR),
-	.din0(sdram_download ? ioctl_dout : ROM_D),
+	.addr0(sdram_download_en ? sdram_download_addr : ROM_ADDR),
+	.din0(sdram_download_en ? sdram_download_data : ROM_D),
 	.dout0(ROM_Q),
-	.rd0(~sdram_download & (RESET_N ? ~ROM_OE_N : RFSH)),
-	.wr0(sdram_download ? ioctl_wr : ~ROM_WE_N),
-	.word0(sdram_download | ROM_WORD),
+	.rd0(sdram_download_en ? 1'b0 : !RESET_N ? RESET_REFRESH : ~ROM_OE_N),
+	.wr0(sdram_download_en ? sdram_download_wr : ~ROM_WE_N),
+	.word0(sdram_download_en | ROM_WORD),
 	
 	.addr1(clearing_ram ? {7'b0000000,mem_fill_addr} : {7'b0000000,WRAM_ADDR}),
 	.din1(clearing_ram ? {8'h00,wram_fill_data} : {8'h00,WRAM_D}),
 	.dout1(sdr_dout1),
 	.rd1(clearing_ram ? 1'b0 : ~WRAM_CE_N & ~WRAM_OE_N & READ_PULSE),
 	.wr1(clearing_ram ? mem_fill_we : ~WRAM_CE_N & ~WRAM_WE_N & SNES_SYSCLKF_CE),
-	.rfs1(clearing_ram ? 1'b0 : SNES_REFRESH),
+	.rfs1(clearing_ram ? 1'b0 : !RESET_N ? RESET_REFRESH : SNES_REFRESH),
 	.word1(0)
 );
 
 assign WRAM_Q = sdr_dout1[7:0];
 
+wire        VRAM_OE_N;
+reg         VRAM_OE_N_DELAYED;
+always @(posedge clk_sys)
+	VRAM_OE_N_DELAYED <= VRAM_OE_N;
+	
 wire [15:0] VRAM1_ADDR;
 wire        VRAM1_WE_N;
-wire  [7:0] VRAM1_D, VRAM1_Q;
+wire  [7:0] VRAM1_D;
+wire  [7:0] vram1_q;
 dpram #(15)	vram1
 (
 	.clock(clk_sys),
 	.address_a(VRAM1_ADDR[14:0]),
 	.data_a(VRAM1_D),
 	.wren_a(~VRAM1_WE_N),
-	.q_a(VRAM1_Q),
+	.q_a(vram1_q),
 
 	// clear the RAM on loading
 	.address_b(mem_fill_addr[14:0]),
 	.wren_b(mem_fill_we)
 );
+wire  [7:0] VRAM1_Q = !VRAM_OE_N && !VRAM_OE_N_DELAYED ? vram1_q : '1;
 
 wire [15:0] VRAM2_ADDR;
 wire        VRAM2_WE_N;
-wire  [7:0] VRAM2_D, VRAM2_Q;
+wire  [7:0] VRAM2_D;
+wire  [7:0] vram2_q;
 dpram #(15) vram2
 (
 	.clock(clk_sys),
 	.address_a(VRAM2_ADDR[14:0]),
 	.data_a(VRAM2_D),
 	.wren_a(~VRAM2_WE_N),
-	.q_a(VRAM2_Q),
+	.q_a(vram2_q),
 
 	// clear the RAM on loading
 	.address_b(mem_fill_addr[14:0]),
 	.wren_b(mem_fill_we)
 );
+wire  [7:0] VRAM2_Q = !VRAM_OE_N && !VRAM_OE_N_DELAYED ? vram2_q : '1; 
 
 wire [15:0] ARAM_ADDR;
 wire        ARAM_CE_N;
@@ -1102,7 +1132,7 @@ reg  HSync, HSYNC;
 reg  VSync, VSYNC;
 reg  HBlank;
 reg  VBlank;
-wire HIGH_RES;
+wire HIGH_RES,V224_MODE;
 reg  DOTCLK;
 
 reg interlace;
@@ -1472,11 +1502,13 @@ wire  [7:0] msu_volume;
 wire        msu_audio_repeat;
 wire        msu_audio_playing;
 wire        msu_audio_stop;
+wire        msu_audio_resume;
 
 wire        msu_audio_ack;
 wire        msu_audio_req;
 wire        msu_audio_seek;
 wire [21:0] msu_audio_sector;
+wire [21:0] msu_resume_sector;
 
 wire [15:0] msu_l;
 wire [15:0] msu_r;
@@ -1491,6 +1523,7 @@ msu_audio msu_audio
 	.ctl_volume(msu_volume),
 	.ctl_stop(msu_audio_stop),
 	.ctl_play(msu_audio_playing),
+	.ctl_resume(msu_audio_resume),
 	.ctl_repeat(msu_audio_repeat),
 
 	.track_size(msu_audio_size),
@@ -1504,6 +1537,7 @@ msu_audio msu_audio
 	.audio_sector(msu_audio_sector),
 	.audio_req(msu_audio_req),
 	.audio_seek(msu_audio_seek),
+	.resume_sector(msu_resume_sector),
 
 	.audio_l(msu_l),
 	.audio_r(msu_r)
