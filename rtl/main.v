@@ -56,10 +56,12 @@ module main (
 	input             GSU_TURBO,
 	input             GSU_FASTROM,
 	input             SUFAMI_SWAP,
+	input       [7:0] CC_DIP,
 
 	input             BLEND,
 	input             PAL,
 	output            HIGH_RES,
+	output            V224_MODE,
 	output            FIELD,
 	output            INTERLACE,
 	output            DOTCLK,
@@ -98,6 +100,8 @@ module main (
 
 	input             TURBO,
 	output            TURBO_ALLOW,
+	
+	input             DSP_FREQ,
 
 	output     [15:0] MSU_TRACK_NUM,
 	output            MSU_TRACK_REQUEST,
@@ -106,7 +110,10 @@ module main (
 	output      [7:0] MSU_VOLUME,
 	input             MSU_AUDIO_STOP,
 	output            MSU_AUDIO_REPEAT,
+	output            MSU_AUDIO_RESUME,
 	output            MSU_AUDIO_PLAYING,
+	input      [21:0] MSU_AUDIO_SECTOR,
+	output     [21:0] MSU_RESUME_SECTOR,
 	output     [31:0] MSU_DATA_ADDR,
 	input       [7:0] MSU_DATA,
 	input             MSU_DATA_ACK,
@@ -233,6 +240,7 @@ SNES SNES
 	.high_res(HIGH_RES),
 	.field_out(FIELD),
 	.interlace(INTERLACE),
+	.v224_mode(V224_MODE),
 	.dotclk(DOTCLK),
 
 	.rgb_out({B,G,R}),
@@ -265,6 +273,8 @@ SNES SNES
 	.DBG_CPU_EN(DBG_CPU_EN),
 	
 	.turbo(TURBO),
+	
+	.dsp_freq(DSP_FREQ),
 
 	.audio_l(AUDIO_L),
 	.audio_r(AUDIO_R)
@@ -304,8 +314,11 @@ MSU MSU
 
 	.status_track_missing(MSU_TRACK_MISSING),
 	.status_audio_repeat(MSU_AUDIO_REPEAT),
+	.audio_resume(MSU_AUDIO_RESUME),
 	.status_audio_playing(MSU_AUDIO_PLAYING),
 	.audio_stop(MSU_AUDIO_STOP),
+	.audio_sector(MSU_AUDIO_SECTOR),
+	.resume_sector(MSU_RESUME_SECTOR),
 
 	.volume(MSU_VOLUME)
 );
@@ -377,6 +390,8 @@ DSP_LHRomMap #(.USE_DSPn(USE_DSPn)) DSP_LHRomMap
 	.bsram_mask(RAM_MASK),
 
 	.ext_rtc(EXT_RTC),
+	
+	.cc_dip(CC_DIP),
 
 	.ss_busy(SS_BUSY),
 	.ss_ram_a(SS_EXT_ADDR[11:0]),
