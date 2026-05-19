@@ -545,7 +545,6 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 	// [MiSTer-DB9-Pro BEGIN] - Saturn key gate
 	.saturn_unlocked(saturn_unlocked),
 	// [MiSTer-DB9-Pro END]
-	// [MiSTer-DB9 END]
 	.ps2_mouse(ps2_mouse),
 	.ps2_key(ps2_key),
 
