@@ -1390,7 +1390,9 @@ reg snac_p2 = 0;
 wire raw_db9  = |JOY_FLAG[2:1];
 
 // [MiSTer-DB9-Pro BEGIN] - route SPLIT (USER_OUT_DRIVE[2]) for Saturn 2P SNAC adapter mux
-assign USER_OUT[2] = joy_saturn_en ? USER_OUT_DRIVE[2] : 1'b1;
+// Unconditional (was joy_saturn_en-gated): carries the Saturn 2P-mux SEL during a
+// Saturn OSD-open probe even with the UserIO Joystick selector Off.
+assign USER_OUT[2] = USER_OUT_DRIVE[2];
 // [MiSTer-DB9-Pro END]
 assign USER_OUT[3] = 1'b1;
 assign USER_OUT[5] = 1'b1;
@@ -1452,10 +1454,13 @@ always_comb begin
 		JOY2_P6_DI = (LG_P6_out | !GUN_MODE);
 	// [MiSTer-DB9-Pro END]
 	end else begin
-		USER_OUT[0] = 1'b1;
-		USER_OUT[1] = 1'b1;
-		USER_OUT[6] = 1'b1;
-		USER_OUT[4] = 1'b1;
+		// Off/USB: fall through to USER_OUT_DRIVE so the joydb OSD-open probe FSM
+		// drives USER_IO for autodetect when the UserIO Joystick selector is Off
+		// (USER_OUT_DRIVE is idle-high while the probe is inactive -> USB/idle no-op).
+		USER_OUT[0] = USER_OUT_DRIVE[0];
+		USER_OUT[1] = USER_OUT_DRIVE[1];
+		USER_OUT[6] = USER_OUT_DRIVE[6];
+		USER_OUT[4] = USER_OUT_DRIVE[4];
 		JOY1_DI = JOY1_DO;
 		JOY2_DI = JOY2_DO;
 		JOY2_P6_DI = (LG_P6_out | !GUN_MODE);
