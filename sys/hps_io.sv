@@ -54,6 +54,11 @@ module hps_io #(parameter CONF_STR, CONF_STR_BRAM=0, PS2DIV=0, WIDE=0, VDNUM=1, 
 	output reg [15:0] joystick_l_analog_5,
 	// [MiSTer-DB9 BEGIN] - DB9/SNAC8 support: joy_raw input
 	input      [15:0] joy_raw,
+	// programmable button-remap matrix selector load (UIO_DB9_MAP 0xFD):
+	// expose the raw command/word-index/data to the core's joydb instance.
+	output            db9_remap_cmd,
+	output      [5:0] db9_remap_byte_cnt,
+	output     [15:0] db9_remap_din,
 	// [MiSTer-DB9 END]
 	// [MiSTer-DB9-Pro BEGIN] - key gate v1.5 (per-customer SipHash MAC; UIO_DB9_KEY 0xFE)
 	output            saturn_unlocked,
@@ -729,6 +734,16 @@ db9_key_gate #(
 	.saturn_unlocked (saturn_unlocked)
 );
 // [MiSTer-DB9-Pro END]
+
+// [MiSTer-DB9 BEGIN] - programmable remap matrix (UIO_DB9_MAP 0xFD bytestream)
+// Pure write-sink: forward the held command/word-index/data to the core's
+// joydb instance, which deserializes the 10-word selector table. `cmd` lives
+// in the `uio_block` named always block (SV hierarchical name, like the key
+// gate above).
+assign db9_remap_cmd      = (uio_block.cmd == 16'hFD);
+assign db9_remap_byte_cnt = byte_cnt[5:0];
+assign db9_remap_din      = io_din;
+// [MiSTer-DB9 END]
 
 endmodule
 

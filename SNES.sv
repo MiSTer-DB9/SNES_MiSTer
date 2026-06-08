@@ -218,11 +218,17 @@ wire         joy_saturn_en   = (joy_type == 2'd1);
 wire   [7:0] USER_OUT_DRIVE;
 wire   [7:0] USER_PP_DRIVE;
 wire  [15:0] joydb_1, joydb_2;
+wire  [15:0] joydb_1_mapped, joydb_2_mapped;
 wire         joydb_1ena, joydb_2ena;
 wire  [15:0] joy_raw_payload;
+// programmable button-remap matrix selector load (from hps_io UIO 0xFD)
+wire         db9_remap_cmd;
+wire   [5:0] db9_remap_byte_cnt;
+wire  [15:0] db9_remap_din;
 
 joydb joydb (
   .clk             ( CLK_JOY         ),
+  .clk_sys         ( clk_sys         ),
   .USER_IN         ( USER_IN         ),
   .OSD_STATUS          ( OSD_STATUS          ),
   .snac_active         ( snac_active         ),
@@ -237,6 +243,11 @@ joydb joydb (
   .joydb_2         ( joydb_2         ),
   .joydb_1ena      ( joydb_1ena      ),
   .joydb_2ena      ( joydb_2ena      ),
+  .remap_cmd       ( db9_remap_cmd      ),
+  .remap_byte_cnt  ( db9_remap_byte_cnt ),
+  .remap_din       ( db9_remap_din      ),
+  .joydb_1_mapped  ( joydb_1_mapped  ),
+  .joydb_2_mapped  ( joydb_2_mapped  ),
   .joy_raw         ( joy_raw_payload )
 );
 // USER_OUT[0,1,4,6] driven below by SNES SerJoystick relay always_comb (raw_serial / DB9MD / DB15 / Saturn fall-through to USER_OUT_DRIVE).
@@ -416,7 +427,9 @@ parameter CONF_STR = {
 	"P2-;",
 	"P2O[127:126],UserIO Joystick,Off,Saturn,DB9MD,DB15;",
 	"P2O[125],UserIO Players, 1 Player,2 Players;",
-	"P2O[124:123],Buttons Config.,Option 1,Option 2,Option 3;",
+	// Per-core button layout is now user-defined via the Main_MiSTer-injected
+	// "Define DB9 buttons" OSD item (was: hardcoded "Buttons Config." presets
+	// at status[124:123]). Those status bits are now free/unused.
 // [MiSTer-DB9 END]
 
 	"P3,Hardware;",
@@ -490,36 +503,16 @@ wire [64:0] RTC;
 
 wire [21:0] gamma_bus;
 
-// [MiSTer-DB9 BEGIN] - DB9/SNAC8 support
-wire [12:0] joy0 = joydb_1ena ?
-	(OSD_STATUS ? 13'b0 :
-	(status[124:123] == 0 ?
-		// S M Z X A Y B C U D L R
-		{joydb_1[11] & joydb_1[10], joydb_1[10], joydb_1[11], joydb_1[9], joydb_1[7], joydb_1[4], joydb_1[8], joydb_1[5], joydb_1[6], joydb_1[3:0]}
-		: status[124:123] == 1 ?
-		// S M C Z X Y A B U D L R
-		{joydb_1[11] & joydb_1[10], joydb_1[10], joydb_1[11], joydb_1[6], joydb_1[9], joydb_1[7], joydb_1[8], joydb_1[4], joydb_1[5], joydb_1[3:0]}
-		:
-		// NEO-GEO CD Mapping: A=>B, B=>A, C=>Y, D=>X, Select=>Select, Start=>Start
-		// SS S M L R X Y A B U D L R
-		{joydb_1[11] & joydb_1[10], joydb_1[10], joydb_1[11], 1'b0, 1'b0, joydb_1[6], joydb_1[7], joydb_1[4], joydb_1[5], joydb_1[3:0]}
-	))
-: joy0_USB;
+// [MiSTer-DB9 BEGIN] - DB9/SNAC8 support: programmable remap matrix
+// joydb_*_mapped already carry the DB9/DB15/Saturn buttons rewired into the
+// MiSTer-standard order (same bit layout as joy0_USB) per the user's per-core
+// per-devtype map streamed over UIO 0xFD. Replaces the old hardcoded
+// status[124:123] "Buttons Config." permutation; layouts are now defined in
+// the OSD "Define DB9 buttons" flow.
+wire [12:0] joy0 = joydb_1ena ? (OSD_STATUS ? 13'b0 : joydb_1_mapped[12:0]) : joy0_USB;
 
-wire [12:0] joy1 = joydb_2ena ?
-	(OSD_STATUS ? 13'b0 :
-	(status[124:123] == 0 ?
-		// S M Z X A Y B C U D L R
-		{joydb_2[10], joydb_2[11], joydb_2[9], joydb_2[7], joydb_2[4], joydb_2[8], joydb_2[5], joydb_2[6], joydb_2[3:0]}
-		: status[124:123] == 1 ?
-		// S M C Z X Y A B U D L R
-		{joydb_2[10], joydb_2[11], joydb_2[6], joydb_2[9], joydb_2[7], joydb_2[8], joydb_2[4], joydb_2[5], joydb_2[3:0]}
-		:
-		// NEO-GEO CD Mapping: A=>B, B=>A, C=>Y, D=>X, Select=>Select, Start=>Start
-		// S M L R X Y A B U D L R
-		{joydb_2[10], joydb_2[11], 1'b0, 1'b0, joydb_2[6], joydb_2[7], joydb_2[4], joydb_2[5], joydb_2[3:0]}
-	))
-: joydb_1ena ? joy0_USB : joy1_USB;
+wire [12:0] joy1 = joydb_2ena ? (OSD_STATUS ? 13'b0 : joydb_2_mapped[12:0])
+                 : joydb_1ena ? joy0_USB : joy1_USB;
 
 wire [12:0] joy2 = joydb_2ena ? joy1_USB : joydb_1ena ? joy1_USB : joy2_USB;
 wire [12:0] joy3 = joydb_2ena ? joy2_USB : joydb_1ena ? joy2_USB : joy3_USB;
@@ -552,6 +545,10 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1)) hps_io
 	.joystick_0_rumble(status[8] ? 16'h0000 : joystick1_rumble),
 	// [MiSTer-DB9 BEGIN] - DB9/SNAC8 support: joy_raw
 	.joy_raw(OSD_STATUS ? joy_raw_payload : 16'b0),
+	// programmable remap matrix selector load (UIO_DB9_MAP 0xFD)
+	.db9_remap_cmd(db9_remap_cmd),
+	.db9_remap_byte_cnt(db9_remap_byte_cnt),
+	.db9_remap_din(db9_remap_din),
 	// [MiSTer-DB9 END]
 	// [MiSTer-DB9-Pro BEGIN] - Saturn key gate
 	.saturn_unlocked(saturn_unlocked),
