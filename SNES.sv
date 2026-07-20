@@ -1630,7 +1630,7 @@ msu_audio msu_audio
 	.ctl_repeat(msu_audio_repeat),
 
 	.track_size(msu_audio_size),
-	.track_processing(msu_track_missing | msu_track_mounting | msu_track_request),
+	.track_processing(msu_track_request),
 
 	.audio_download(msu_audio_download),
 	.audio_data(ioctl_dout),
