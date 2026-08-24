@@ -1285,11 +1285,7 @@ begin
 						MR(39 downto 0) <= x"00" & MULR;
 						MB <= (others => '0');
 					else
-						if MB = x"0000" then 
-							MR(39 downto 0) <= (others => '0');
-						else
-							MR(39 downto 0) <= x"00" & DIVR & DIVQ;
-						end if;
+						MR(39 downto 0) <= x"00" & DIVR & DIVQ;
 						MA <= (others => '0');
 						MB <= (others => '0');
 					end if;
