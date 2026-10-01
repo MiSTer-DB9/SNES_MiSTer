@@ -183,7 +183,9 @@ module emu
 
 
 // [MiSTer-DB9 BEGIN] - DB9/SNAC8 support: USER_PP default (port_batch replaces with USER_PP_DRIVE)
-assign USER_PP = USER_PP_DRIVE;
+// SNAC drives Strobe (IO0), P1 Clk (IO1) and P2 Clk (IO6) push-pull: the weak pull-up alone
+// cannot latch the pad on adapters without their own pull-ups.
+assign USER_PP = USER_PP_DRIVE | (raw_serial ? 8'b01000011 : 8'b00000000);
 // [MiSTer-DB9 END]
 assign ADC_BUS  = 'Z;
 
