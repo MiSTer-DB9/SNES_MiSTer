@@ -18,6 +18,9 @@
 //  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 //============================================================================ 
 
+// [MiSTer-DB9 BEGIN] - status bits owned by the fork: joy_type, joy_2p, SNAC Pinout
+// [MiSTer-DB9 RESERVED status bits: 127:126 125 122]
+// [MiSTer-DB9 END]
 module emu
 (
 	//Master input clock
@@ -183,9 +186,10 @@ module emu
 
 
 // [MiSTer-DB9 BEGIN] - DB9/SNAC8 support: USER_PP default (port_batch replaces with USER_PP_DRIVE)
-// SNAC drives Strobe (IO0), P1 Clk (IO1) and P2 Clk (IO6) push-pull: the weak pull-up alone
-// cannot latch the pad on adapters without their own pull-ups.
-assign USER_PP = USER_PP_DRIVE | (raw_serial ? 8'b01000011 : 8'b00000000);
+// SNAC drives Strobe (IO0), P1 Clk (IO1) and, with SNAC Pinout DB9, P2 Clk (IO6) push-pull:
+// the weak pull-up alone cannot latch the pad on adapters without their own pull-ups. With
+// SNAC Pinout USB3 the P2 Clk moves to IO3 and stays open-drain, as upstream drives it.
+assign USER_PP = USER_PP_DRIVE | (raw_serial ? {1'b0, ~snac_usb3, 4'b0000, 2'b11} : 8'b00000000);
 // [MiSTer-DB9 END]
 assign ADC_BUS  = 'Z;
 
@@ -261,8 +265,8 @@ joydb joydb (
   .joydb_2_mapped  ( joydb_2_mapped  ),
   .joy_raw         ( joy_raw_payload )
 );
-// USER_OUT[0,1,4,6] driven below by SNES SerJoystick relay always_comb (raw_serial / DB9MD / DB15 / Saturn fall-through to USER_OUT_DRIVE).
-// USER_OUT[2,3,5,7] driven by separate strap assigns (SNAC8 idle).
+// USER_OUT[0,1,3,4,6] driven below by SNES SerJoystick relay always_comb (raw_serial / DB9MD / DB15 / Saturn fall-through to USER_OUT_DRIVE).
+// USER_OUT[2,5,7] driven by separate strap assigns (SNAC8 idle).
 // [MiSTer-DB9 END]
 
 assign AUDIO_S   = 1;
@@ -423,6 +427,9 @@ parameter CONF_STR = {
 	"P2-;",
 	"P2O7,Swap Joysticks,No,Yes;",
 	"P2O8,SNAC,No,Yes;",
+	// [MiSTer-DB9 BEGIN] - SNAC P2 pin layout: DB9 adapters vs upstream USB3 adapters
+	"h7P2O[122],SNAC Pinout,DB9,USB3;",
+	// [MiSTer-DB9 END]
 	"P2O[53],State Ld/Sv,Start+Up/Down,Up/Down;",
 	"P2-;",
 	"P2oB,Miracle Piano,No,Yes;",
@@ -1408,17 +1415,22 @@ reg snac_p2 = 0;
 // [MiSTer-DB9 BEGIN] - DB9/SNAC8 support
 wire raw_db9  = |JOY_FLAG[2:1];
 
+// SNAC Pinout: DB9 adapters put P2 data on IO3 and P2 clock on IO6, upstream USB3
+// adapters swap them (P2 clock IO3, P2 data IO6).
+wire snac_usb3   = status[122];
+wire snac_p2_in  = snac_usb3 ? USER_IN[6] : USER_IN[3];
+wire snac_p2_clk = joy_swap ? ~JOY1_CLK : ~JOY2_CLK;
+
 // [MiSTer-DB9-Pro BEGIN] - route SPLIT (USER_OUT_DRIVE[2]) for Saturn 2P SNAC adapter mux
 // Unconditional (was joy_saturn_en-gated): carries the Saturn 2P-mux SEL during a
 // Saturn OSD-open probe even with the UserIO Joystick selector Off.
 assign USER_OUT[2] = USER_OUT_DRIVE[2];
 // [MiSTer-DB9-Pro END]
-assign USER_OUT[3] = 1'b1;
 assign USER_OUT[5] = 1'b1;
 assign USER_OUT[7] = 1'b1;
 
-wire  [1:0] datajoy0_DI = snac_p2 ? {USER_IN[2], USER_IN[5]} : JOY1_DO;
-wire  [1:0] datajoy1_DI = snac_p2 ? {1'b1      , USER_IN[3]} : JOY2_DO;
+wire  [1:0] datajoy0_DI = snac_p2 ? {1'b1      , snac_p2_in} : JOY1_DO;
+wire  [1:0] datajoy1_DI = snac_p2 ? {1'b1      , snac_p2_in} : JOY2_DO;
 // [MiSTer-DB9 END]
 
 
@@ -1429,7 +1441,7 @@ wire JOY2_P6_DI;
 
 always @(posedge clk_sys) begin
 	if (raw_serial) begin
-		if (~USER_IN[3])
+		if (~snac_p2_in)
 			snac_p2 <= 1;
 	end else begin
 		snac_p2 <= 0;
@@ -1441,8 +1453,9 @@ always_comb begin
 	if (raw_serial) begin
 		USER_OUT[0] = JOY_STRB;
 		USER_OUT[1] = joy_swap ? ~JOY2_CLK : ~JOY1_CLK;
-		USER_OUT[6] = joy_swap ? ~JOY1_CLK : ~JOY2_CLK;
-		USER_OUT[4] = joy_swap ? JOY2_P6 : snac_p2 ? JOY2_P6 : JOY1_P6;
+		USER_OUT[6] = snac_usb3 ? 1'b1 : snac_p2_clk;
+		USER_OUT[3] = snac_usb3 ? snac_p2_clk : 1'b1;
+		USER_OUT[4] = joy_swap ? (snac_p2 ? JOY1_P6 : JOY2_P6) : snac_p2 ? JOY2_P6 : JOY1_P6;
 		JOY1_DI = joy_swap ? datajoy0_DI : snac_p2 ? {1'b1, USER_IN[5]} : {USER_IN[2], USER_IN[5]};
 		JOY2_DI = joy_swap ? {USER_IN[2], USER_IN[5]} : datajoy1_DI;
 		JOY2_P6_DI = joy_swap ? USER_IN[4] : snac_p2 ? USER_IN[4] : (LG_P6_out | !GUN_MODE);
@@ -1450,6 +1463,7 @@ always_comb begin
 		USER_OUT[0] = USER_OUT_DRIVE[0];
 		USER_OUT[1] = USER_OUT_DRIVE[1];
 		USER_OUT[6] = USER_OUT_DRIVE[6];
+		USER_OUT[3] = USER_OUT_DRIVE[3];
 		USER_OUT[4] = USER_OUT_DRIVE[4];
 		JOY1_DI = JOY1_DO;
 		JOY2_DI = JOY2_DO;
@@ -1458,6 +1472,7 @@ always_comb begin
 		USER_OUT[0] = USER_OUT_DRIVE[0];
 		USER_OUT[1] = USER_OUT_DRIVE[1];
 		USER_OUT[6] = USER_OUT_DRIVE[6];
+		USER_OUT[3] = USER_OUT_DRIVE[3];
 		USER_OUT[4] = USER_OUT_DRIVE[4];
 		JOY1_DI = JOY1_DO;
 		JOY2_DI = JOY2_DO;
@@ -1467,6 +1482,7 @@ always_comb begin
 		USER_OUT[0] = USER_OUT_DRIVE[0];
 		USER_OUT[1] = USER_OUT_DRIVE[1];
 		USER_OUT[6] = USER_OUT_DRIVE[6];
+		USER_OUT[3] = USER_OUT_DRIVE[3];
 		USER_OUT[4] = USER_OUT_DRIVE[4];
 		JOY1_DI = JOY1_DO;
 		JOY2_DI = JOY2_DO;
@@ -1479,6 +1495,7 @@ always_comb begin
 		USER_OUT[0] = USER_OUT_DRIVE[0];
 		USER_OUT[1] = USER_OUT_DRIVE[1];
 		USER_OUT[6] = USER_OUT_DRIVE[6];
+		USER_OUT[3] = USER_OUT_DRIVE[3];
 		USER_OUT[4] = USER_OUT_DRIVE[4];
 		JOY1_DI = JOY1_DO;
 		JOY2_DI = JOY2_DO;
